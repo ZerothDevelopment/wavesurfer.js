@@ -31,11 +31,11 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
         let lastMouseY = initialMouseY;
         let accumulatedDx = 0;
         let lastScrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
-        // Improved damping and sensitivity settings
-        const DRAG_DAMPING = 0.85; // Reduced damping for better responsiveness
-        const EDGE_THRESHOLD = 50; // Balanced threshold for edge detection
-        const MIN_DRAG_INTERVAL = 8; // 120fps for smooth updates
-        const MIN_MOVEMENT_THRESHOLD = 0.3; // Lower threshold for more responsive feel
+        // Optimized settings for smooth scrolling
+        const DRAG_DAMPING = 0.95; // Higher damping for smoother interaction with auto-scroll
+        const EDGE_THRESHOLD = 60; // Match the scroll threshold in renderer
+        const MIN_DRAG_INTERVAL = 4; // 240fps for ultra-smooth updates
+        const MIN_MOVEMENT_THRESHOLD = 0.1; // Very low threshold for immediate response
         const onPointerMove = (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -43,7 +43,7 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
                 return;
             const currentTime = Date.now();
             const timeDelta = currentTime - lastDragTime;
-            // Throttle drag updates for performance
+            // High-frequency updates for smooth scrolling
             if (timeDelta < MIN_DRAG_INTERVAL)
                 return;
             const currentMouseX = event.clientX;
@@ -58,7 +58,7 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
                 // Get current element position and detect scroll changes
                 const currentRect = element.getBoundingClientRect();
                 const { left, top, width } = currentRect;
-                // Detect scroll changes and compensate
+                // Detect and compensate for scroll changes
                 let scrollDelta = 0;
                 if (scrollContainer) {
                     const currentScrollLeft = scrollContainer.scrollLeft;
@@ -72,33 +72,32 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
                     onStart === null || onStart === void 0 ? void 0 : onStart(initialRelativeX, initialRelativeY);
                     isDragging = true;
                 }
-                // Calculate distance from edges based on current position
+                // Calculate distance from edges for smooth interaction
                 const distanceFromLeftEdge = currentRelativeX;
                 const distanceFromRightEdge = width - currentRelativeX;
                 const minDistanceFromEdge = Math.min(distanceFromLeftEdge, distanceFromRightEdge);
-                // Apply progressive edge damping with smoother curve
+                // Minimal edge damping to allow smooth scrolling
                 let edgeDamping = 1.0;
                 if (minDistanceFromEdge < EDGE_THRESHOLD) {
                     const edgeRatio = minDistanceFromEdge / EDGE_THRESHOLD;
-                    // Smoother cubic curve for more natural feel
-                    edgeDamping = Math.max(0.1, edgeRatio * edgeRatio * edgeRatio);
+                    // Light damping that doesn't interfere with smooth scrolling
+                    edgeDamping = Math.max(0.7, edgeRatio);
                 }
-                // Compensate for scroll-induced position changes
+                // Smooth scroll compensation
                 let compensatedDx = rawDx;
-                if (scrollDelta !== 0) {
-                    // When scrolling occurs, adjust the movement to maintain cursor position
+                if (Math.abs(scrollDelta) > 0) {
+                    // Precise compensation for smooth scrolling
                     compensatedDx = rawDx - scrollDelta;
                 }
-                // Apply damping to the compensated movement
+                // Apply minimal damping to preserve responsiveness
                 const dampedDx = compensatedDx * DRAG_DAMPING * edgeDamping;
                 const dampedDy = rawDy * DRAG_DAMPING * edgeDamping;
-                // Accumulate small movements to prevent precision loss
+                // Accumulate movements for precision
                 accumulatedDx += dampedDx;
-                // Only trigger drag if accumulated movement is significant
+                // Immediate response with very low threshold
                 if (Math.abs(accumulatedDx) > MIN_MOVEMENT_THRESHOLD) {
-                    // Use current relative position for accurate positioning
                     onDrag(accumulatedDx, dampedDy, currentRelativeX, currentRelativeY);
-                    accumulatedDx = 0; // Reset accumulator
+                    accumulatedDx = 0;
                 }
                 // Update tracking variables
                 lastDragTime = currentTime;

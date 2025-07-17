@@ -732,12 +732,30 @@ class Renderer extends EventEmitter<RendererEvents> {
     const middle = clientWidth / 2
 
     if (this.isDragging) {
-      // Scroll when dragging close to the edge of the viewport
-      const minGap = 30
-      if (progressWidth + minGap > endEdge) {
-        this.scrollContainer.scrollLeft += minGap
-      } else if (progressWidth - minGap < startEdge) {
-        this.scrollContainer.scrollLeft -= minGap
+      // Smooth proportional scrolling when dragging near edges
+      const edgeThreshold = 60 // Distance from edge to start scrolling
+      const maxScrollSpeed = 8 // Maximum scroll speed per frame
+      
+      const distanceFromRightEdge = endEdge - progressWidth
+      const distanceFromLeftEdge = progressWidth - startEdge
+      
+      let scrollDelta = 0
+      
+      // Calculate smooth scroll based on distance from edge
+      if (distanceFromRightEdge < edgeThreshold && distanceFromRightEdge > 0) {
+        // Approaching right edge - scroll right
+        const scrollRatio = (edgeThreshold - distanceFromRightEdge) / edgeThreshold
+        scrollDelta = Math.ceil(scrollRatio * maxScrollSpeed)
+      } else if (distanceFromLeftEdge < edgeThreshold && distanceFromLeftEdge > 0) {
+        // Approaching left edge - scroll left
+        const scrollRatio = (edgeThreshold - distanceFromLeftEdge) / edgeThreshold
+        scrollDelta = -Math.ceil(scrollRatio * maxScrollSpeed)
+      }
+      
+      // Apply smooth scrolling
+      if (scrollDelta !== 0) {
+        const newScrollLeft = Math.max(0, Math.min(scrollWidth - clientWidth, scrollLeft + scrollDelta))
+        this.scrollContainer.scrollLeft = newScrollLeft
       }
     } else {
       if (progressWidth < startEdge || progressWidth > endEdge) {
