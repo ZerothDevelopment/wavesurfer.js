@@ -605,27 +605,23 @@ class Renderer extends EventEmitter {
         const endEdge = scrollLeft + clientWidth;
         const middle = clientWidth / 2;
         if (this.isDragging) {
-            // Smooth proportional scrolling when dragging near edges
-            const edgeThreshold = 60; // Distance from edge to start scrolling
-            const maxScrollSpeed = 8; // Maximum scroll speed per frame
-            const distanceFromRightEdge = endEdge - progressWidth;
-            const distanceFromLeftEdge = progressWidth - startEdge;
-            let scrollDelta = 0;
-            // Calculate smooth scroll based on distance from edge
-            if (distanceFromRightEdge < edgeThreshold && distanceFromRightEdge > 0) {
-                // Approaching right edge - scroll right
-                const scrollRatio = (edgeThreshold - distanceFromRightEdge) / edgeThreshold;
-                scrollDelta = Math.ceil(scrollRatio * maxScrollSpeed);
+            // Smooth continuous scrolling that follows the cursor
+            const bufferZone = 120; // Keep cursor away from edges by this amount
+            const targetScrollLeft = progressWidth - bufferZone;
+            const maxScrollLeft = scrollWidth - clientWidth;
+            // Calculate the ideal scroll position to keep cursor in buffer zone
+            let idealScrollLeft = Math.max(0, Math.min(maxScrollLeft, targetScrollLeft));
+            // If we're near the right edge, maintain right buffer
+            if (progressWidth > endEdge - bufferZone) {
+                idealScrollLeft = Math.max(0, Math.min(maxScrollLeft, progressWidth - clientWidth + bufferZone));
             }
-            else if (distanceFromLeftEdge < edgeThreshold && distanceFromLeftEdge > 0) {
-                // Approaching left edge - scroll left
-                const scrollRatio = (edgeThreshold - distanceFromLeftEdge) / edgeThreshold;
-                scrollDelta = -Math.ceil(scrollRatio * maxScrollSpeed);
-            }
-            // Apply smooth scrolling
-            if (scrollDelta !== 0) {
-                const newScrollLeft = Math.max(0, Math.min(scrollWidth - clientWidth, scrollLeft + scrollDelta));
-                this.scrollContainer.scrollLeft = newScrollLeft;
+            // Smooth interpolation towards ideal position
+            const scrollDiff = idealScrollLeft - scrollLeft;
+            const smoothingFactor = 0.15; // Adjust for smoothness (0.1 = very smooth, 0.3 = more responsive)
+            // Only scroll if there's a meaningful difference
+            if (Math.abs(scrollDiff) > 1) {
+                const newScrollLeft = scrollLeft + (scrollDiff * smoothingFactor);
+                this.scrollContainer.scrollLeft = Math.max(0, Math.min(maxScrollLeft, newScrollLeft));
             }
         }
         else {

@@ -31,11 +31,11 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
         let lastMouseY = initialMouseY;
         let accumulatedDx = 0;
         let lastScrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
-        // Optimized settings for smooth scrolling
-        const DRAG_DAMPING = 0.95; // Higher damping for smoother interaction with auto-scroll
-        const EDGE_THRESHOLD = 60; // Match the scroll threshold in renderer
-        const MIN_DRAG_INTERVAL = 4; // 240fps for ultra-smooth updates
-        const MIN_MOVEMENT_THRESHOLD = 0.1; // Very low threshold for immediate response
+        // Optimized for smooth continuous scrolling
+        const DRAG_DAMPING = 0.98; // Minimal damping for maximum responsiveness
+        const MIN_DRAG_INTERVAL = 8; // 120fps - balanced for smooth performance
+        const MIN_MOVEMENT_THRESHOLD = 0.05; // Very responsive threshold
+        const SCROLL_COMPENSATION_FACTOR = 0.8; // Partial compensation to work with smooth scrolling
         const onPointerMove = (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -43,7 +43,7 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
                 return;
             const currentTime = Date.now();
             const timeDelta = currentTime - lastDragTime;
-            // High-frequency updates for smooth scrolling
+            // Balanced update frequency for smooth scrolling
             if (timeDelta < MIN_DRAG_INTERVAL)
                 return;
             const currentMouseX = event.clientX;
@@ -55,10 +55,10 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
             const totalDx = currentMouseX - initialMouseX;
             const totalDy = currentMouseY - initialMouseY;
             if (isDragging || Math.abs(totalDx) > threshold || Math.abs(totalDy) > threshold) {
-                // Get current element position and detect scroll changes
+                // Get current element position
                 const currentRect = element.getBoundingClientRect();
                 const { left, top, width } = currentRect;
-                // Detect and compensate for scroll changes
+                // Track scroll changes with partial compensation for smooth scrolling
                 let scrollDelta = 0;
                 if (scrollContainer) {
                     const currentScrollLeft = scrollContainer.scrollLeft;
@@ -72,29 +72,28 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
                     onStart === null || onStart === void 0 ? void 0 : onStart(initialRelativeX, initialRelativeY);
                     isDragging = true;
                 }
-                // Calculate distance from edges for smooth interaction
+                // Minimal edge effects since smooth scrolling handles positioning
+                let edgeDamping = 1.0;
                 const distanceFromLeftEdge = currentRelativeX;
                 const distanceFromRightEdge = width - currentRelativeX;
                 const minDistanceFromEdge = Math.min(distanceFromLeftEdge, distanceFromRightEdge);
-                // Minimal edge damping to allow smooth scrolling
-                let edgeDamping = 1.0;
-                if (minDistanceFromEdge < EDGE_THRESHOLD) {
-                    const edgeRatio = minDistanceFromEdge / EDGE_THRESHOLD;
-                    // Light damping that doesn't interfere with smooth scrolling
-                    edgeDamping = Math.max(0.7, edgeRatio);
+                // Very light edge damping only for extreme edges
+                if (minDistanceFromEdge < 20) {
+                    const edgeRatio = minDistanceFromEdge / 20;
+                    edgeDamping = Math.max(0.9, edgeRatio);
                 }
-                // Smooth scroll compensation
+                // Partial scroll compensation for smooth scrolling system
                 let compensatedDx = rawDx;
-                if (Math.abs(scrollDelta) > 0) {
-                    // Precise compensation for smooth scrolling
-                    compensatedDx = rawDx - scrollDelta;
+                if (Math.abs(scrollDelta) > 0.5) {
+                    // Partial compensation works better with smooth scrolling
+                    compensatedDx = rawDx - (scrollDelta * SCROLL_COMPENSATION_FACTOR);
                 }
-                // Apply minimal damping to preserve responsiveness
+                // Minimal damping for maximum responsiveness
                 const dampedDx = compensatedDx * DRAG_DAMPING * edgeDamping;
                 const dampedDy = rawDy * DRAG_DAMPING * edgeDamping;
-                // Accumulate movements for precision
+                // Accumulate movements
                 accumulatedDx += dampedDx;
-                // Immediate response with very low threshold
+                // Very responsive threshold
                 if (Math.abs(accumulatedDx) > MIN_MOVEMENT_THRESHOLD) {
                     onDrag(accumulatedDx, dampedDy, currentRelativeX, currentRelativeY);
                     accumulatedDx = 0;
