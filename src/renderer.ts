@@ -187,6 +187,7 @@ class Renderer extends EventEmitter<RendererEvents> {
           overflow-y: hidden;
           width: 100%;
           position: relative;
+          scroll-behavior: smooth; /* Enable smooth scrolling animations */
         }
         :host .noScrollbar {
           scrollbar-color: transparent;
@@ -735,7 +736,14 @@ class Renderer extends EventEmitter<RendererEvents> {
       // Keep the cursor roughly centered while dragging, except at the very edges
       const maxScrollLeft = scrollWidth - clientWidth
       const idealScrollLeft = Math.max(0, Math.min(maxScrollLeft, progressWidth - middle))
-      this.scrollContainer.scrollLeft = idealScrollLeft
+
+      // Smoothly interpolate towards the ideal position to avoid visible jumps
+      const diff = idealScrollLeft - scrollLeft
+      const smoothingFactor = 0.35 // 0=no smoothing, 1=instant. Adjust for balance.
+
+      if (Math.abs(diff) > 0.5) {
+        this.scrollContainer.scrollLeft += diff * smoothingFactor
+      }
     } else {
       if (progressWidth < startEdge || progressWidth > endEdge) {
         this.scrollContainer.scrollLeft = progressWidth - (this.options.autoCenter ? middle : 0)
