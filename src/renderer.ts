@@ -315,9 +315,6 @@ class Renderer extends EventEmitter<RendererEvents> {
           left: 0;
           height: 100%;
           border-radius: 2px;
-          will-change: left, transform;
-          contain: paint; /* isolate painting to avoid flicker */
-          transform: translateZ(0); /* promote to its own layer */
         }
       </style>
 
@@ -464,12 +461,9 @@ class Renderer extends EventEmitter<RendererEvents> {
     if (isNaN(progress)) return
     if (progress === this.lastCursorProgress) return
     this.lastCursorProgress = progress
-    const wrapperWidth = this.wrapper.getBoundingClientRect().width
-    const x = progress * wrapperWidth
-
-    // Use transform-only positioning to avoid layout thrashing and flicker
-    const offsetPx = progress >= 1 ? (this.options.cursorWidth || 0) : 0
-    this.cursor.style.transform = `translateX(${x - offsetPx}px)`
+    const percents = progress * 100
+    this.cursor.style.left = `${percents}%`
+    this.cursor.style.transform = `translateX(-${Math.round(percents) === 100 ? this.options.cursorWidth : 0}px)`
   }
 
   private syncCursorWithScroll() {
