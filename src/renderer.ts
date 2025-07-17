@@ -45,6 +45,7 @@ class Renderer extends EventEmitter<RendererEvents> {
   private continuousScrollInterval: number | null = null
   private continuousScrollDirection: 'left' | 'right' | null = null
   private continuousScrollSpeed = 0
+  private lastScrollPosition = 0
 
   constructor(options: WaveSurferOptions, audioElement?: HTMLElement) {
     super()
@@ -205,10 +206,15 @@ class Renderer extends EventEmitter<RendererEvents> {
           const wrapperWidth = this.wrapper.getBoundingClientRect().width
           this.dragRelativeX = Math.max(0, Math.min(1, x / wrapperWidth))
           this.realTimeProgress = this.dragRelativeX
+          
+          // Initialize scroll position tracking
+          this.lastScrollPosition = this.lenis?.animatedScroll || this.scrollContainer.scrollLeft
+          
           console.log('🎯 RENDERER DRAG START:', {
             x,
             wrapperWidth,
-            dragRelativeX: this.dragRelativeX
+            dragRelativeX: this.dragRelativeX,
+            lastScrollPosition: this.lastScrollPosition
           })
           this.emit('dragstart', this.dragRelativeX)
         },
@@ -422,6 +428,29 @@ class Renderer extends EventEmitter<RendererEvents> {
       const endX = (animatedScrollLeft + clientWidth) / scrollWidth
       this.emit('scroll', startX, endX, animatedScrollLeft, animatedScrollLeft + clientWidth)
       
+      // During dragging, track scroll changes and update cursor accordingly
+      if (this.isDragging && this.realTimeProgress !== null) {
+        // Calculate how much the scroll has changed
+        const currentScrollLeft = animatedScrollLeft
+        const lastScrollLeft = this.lastScrollPosition || currentScrollLeft
+        const scrollDelta = currentScrollLeft - lastScrollLeft
+        
+        // Only update if there's a meaningful scroll change
+        if (Math.abs(scrollDelta) > 0.1) {
+          const progressDelta = scrollDelta / scrollWidth
+          
+          // Update cursor position to follow the scroll
+          this.realTimeProgress += progressDelta
+          this.realTimeProgress = Math.max(0, Math.min(1, this.realTimeProgress))
+          
+          // Update cursor position immediately
+          this.updateCursorPosition(this.realTimeProgress)
+        }
+        
+        // Store current scroll position for next comparison
+        this.lastScrollPosition = currentScrollLeft
+      }
+      
       // Continuously sync cursor position with Lenis scroll position
       // This ensures perfect synchronization even after drag operations
       this.syncCursorWithScroll()
@@ -468,8 +497,11 @@ class Renderer extends EventEmitter<RendererEvents> {
   }
 
   private syncCursorWithScroll() {
-    // Only sync if we're not currently dragging (to avoid conflicts)
-    if (!this.isDragging && this.realTimeProgress !== null) {
+    // Always sync cursor position when dragging to ensure it follows scroll
+    if (this.isDragging && this.realTimeProgress !== null) {
+      // During drag, continuously update cursor position to follow scroll
+      this.updateCursorPosition(this.realTimeProgress)
+    } else if (!this.isDragging && this.realTimeProgress !== null) {
       // Use the last known real-time progress to maintain cursor position
       // This ensures the cursor stays in the correct position as Lenis animates the scroll
       this.updateCursorPosition(this.realTimeProgress)
@@ -562,24 +594,17 @@ class Renderer extends EventEmitter<RendererEvents> {
         this.scrollContainer.scrollLeft = clampedScrollLeft
       }
       
-      // Update cursor position in real-time during continuous scroll
-      // Calculate the current progress based on scroll position and update cursor
-      const { scrollWidth, clientWidth } = this.scrollContainer
-      const scrollProgress = clampedScrollLeft / scrollWidth
-      const viewportWidth = clientWidth / scrollWidth
+      // Update cursor position during continuous scroll
+      // The cursor should move along with the scroll to maintain its relative position
+      const { scrollWidth } = this.scrollContainer
+      const scrollDelta = clampedScrollLeft - currentScrollLeft
+      const progressDelta = scrollDelta / scrollWidth
       
-      // Update real-time progress to maintain cursor position during continuous scroll
-      // Keep the cursor at the same relative position within the viewport
-      const cursorPositionInViewport = this.realTimeProgress - scrollProgress
+      // Move the cursor along with the scroll
+      this.realTimeProgress += progressDelta
       
-      // If cursor is moving out of viewport, adjust realTimeProgress to keep it visible
-      if (cursorPositionInViewport < 0) {
-        // Cursor is moving left out of viewport, keep it at left edge
-        this.realTimeProgress = scrollProgress
-      } else if (cursorPositionInViewport > viewportWidth) {
-        // Cursor is moving right out of viewport, keep it at right edge
-        this.realTimeProgress = scrollProgress + viewportWidth
-      }
+      // Ensure cursor stays within bounds [0, 1]
+      this.realTimeProgress = Math.max(0, Math.min(1, this.realTimeProgress))
       
       // Update cursor position immediately
       this.updateCursorPosition(this.realTimeProgress)

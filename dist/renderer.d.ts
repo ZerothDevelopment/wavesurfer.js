@@ -40,6 +40,7 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private continuousScrollInterval;
     private continuousScrollDirection;
     private continuousScrollSpeed;
+    private lastScrollPosition;
     constructor(options: WaveSurferOptions, audioElement?: HTMLElement);
     private parentFromOptionsContainer;
     private initEvents;
