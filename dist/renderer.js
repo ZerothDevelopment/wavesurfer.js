@@ -154,8 +154,9 @@ class Renderer extends EventEmitter {
             this.realTimeProgress = relative;
             // Store mouse position for later recalculations during auto-scroll
             this.lastDragMouseX = mouseX;
-            // Immediate cursor update to avoid a one-frame delay
+            // Immediate updates for both cursor and progress fill
             this.updateCursorPosition(relative);
+            this.renderProgress(relative);
             // Start real-time cursor updates
             this.startRealTimeCursorUpdates();
             // Update continuous scroll based on mouse position
@@ -454,6 +455,7 @@ class Renderer extends EventEmitter {
                 this.dragRelativeX = newRelative;
                 this.realTimeProgress = newRelative;
                 this.updateCursorPosition(newRelative);
+                this.renderProgress(newRelative);
             }
             this.continuousScrollInterval = requestAnimationFrame(scroll);
         };
