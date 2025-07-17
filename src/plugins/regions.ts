@@ -561,10 +561,20 @@ class RegionsPlugin extends BasePlugin<RegionsPluginEvents, RegionsPluginOptions
     const bbox = region.element.getBoundingClientRect()
     const left = bbox.left - scrollBbox.left
     const right = bbox.right - scrollBbox.left
+    let scrollShift = 0
     if (left < 0) {
-      scrollContainer.scrollLeft += left
+      scrollShift = left // negative value
     } else if (right > clientWidth) {
-      scrollContainer.scrollLeft += right - clientWidth
+      scrollShift = right - clientWidth // positive value
+    }
+
+    if (scrollShift !== 0) {
+      // Apply scroll
+      scrollContainer.scrollLeft += scrollShift
+
+      // Move region in tandem so the pointer remains aligned.
+      // `_onUpdate` expects pixel delta relative to the parent width.
+      region._onUpdate(scrollShift)
     }
   }
 

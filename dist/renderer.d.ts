@@ -27,6 +27,7 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private resizeObserver;
     private lastContainerWidth;
     private isDragging;
+    private dragRelativeX;
     private subscriptions;
     private unsubscribeOnScroll;
     constructor(options: WaveSurferOptions, audioElement?: HTMLElement);

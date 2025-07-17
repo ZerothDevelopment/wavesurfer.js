@@ -29,6 +29,7 @@ class Renderer extends EventEmitter {
         this.resizeObserver = null;
         this.lastContainerWidth = 0;
         this.isDragging = false;
+        this.dragRelativeX = null;
         this.subscriptions = [];
         this.unsubscribeOnScroll = [];
         this.subscriptions = [];
@@ -113,17 +114,22 @@ class Renderer extends EventEmitter {
         this.subscriptions.push(makeDraggable(this.wrapper, 
         // On drag
         (_, __, x) => {
-            this.emit('drag', Math.max(0, Math.min(1, x / this.wrapper.getBoundingClientRect().width)));
+            const relative = Math.max(0, Math.min(1, x / this.wrapper.getBoundingClientRect().width));
+            this.dragRelativeX = relative;
+            this.emit('drag', relative);
         }, 
         // On start drag
         (x) => {
             this.isDragging = true;
-            this.emit('dragstart', Math.max(0, Math.min(1, x / this.wrapper.getBoundingClientRect().width)));
+            this.dragRelativeX = Math.max(0, Math.min(1, x / this.wrapper.getBoundingClientRect().width));
+            this.emit('dragstart', this.dragRelativeX);
         }, 
         // On end drag
         (x) => {
             this.isDragging = false;
-            this.emit('dragend', Math.max(0, Math.min(1, x / this.wrapper.getBoundingClientRect().width)));
+            const relative = Math.max(0, Math.min(1, x / this.wrapper.getBoundingClientRect().width));
+            this.dragRelativeX = null;
+            this.emit('dragend', relative);
         }));
     }
     getHeight(optionsHeight, optionsSplitChannel) {
@@ -609,8 +615,16 @@ class Renderer extends EventEmitter {
             // Keep the cursor roughly centered while dragging, except at the very edges
             const maxScrollLeft = scrollWidth - clientWidth;
             const idealScrollLeft = Math.max(0, Math.min(maxScrollLeft, progressWidth - middle));
-            // Set scroll position directly so the cursor remains under the mouse with no lag
+            const prevScroll = scrollLeft;
             this.scrollContainer.scrollLeft = idealScrollLeft;
+            // Compensate drag position so cursor stays under mouse
+            const scrollShift = idealScrollLeft - prevScroll;
+            if (scrollShift !== 0 && this.dragRelativeX != null) {
+                const wrapperW = this.wrapper.getBoundingClientRect().width;
+                const shiftRelative = scrollShift / wrapperW;
+                this.dragRelativeX = Math.max(0, Math.min(1, this.dragRelativeX + shiftRelative));
+                this.emit('drag', this.dragRelativeX);
+            }
         }
         else {
             if (progressWidth < startEdge || progressWidth > endEdge) {
