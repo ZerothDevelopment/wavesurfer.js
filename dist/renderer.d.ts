@@ -30,6 +30,8 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private dragRelativeX;
     private subscriptions;
     private unsubscribeOnScroll;
+    private autoScrollInterval;
+    private lastScrollAdjustment;
     constructor(options: WaveSurferOptions, audioElement?: HTMLElement);
     private parentFromOptionsContainer;
     private initEvents;
@@ -45,6 +47,8 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     setScroll(pixels: number): void;
     setScrollPercentage(percent: number): void;
     destroy(): void;
+    private startContinuousScroll;
+    private stopContinuousScroll;
     private createDelay;
     private convertColorValues;
     private getPixelRatio;

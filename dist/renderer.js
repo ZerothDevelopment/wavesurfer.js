@@ -32,6 +32,8 @@ class Renderer extends EventEmitter {
         this.dragRelativeX = null;
         this.subscriptions = [];
         this.unsubscribeOnScroll = [];
+        this.autoScrollInterval = null;
+        this.lastScrollAdjustment = 0;
         this.subscriptions = [];
         this.options = options;
         const parent = this.parentFromOptionsContainer(options.container);
@@ -140,6 +142,7 @@ class Renderer extends EventEmitter {
         // On end drag
         (x) => {
             this.isDragging = false;
+            this.stopContinuousScroll();
             const wrapperWidth = this.wrapper.getBoundingClientRect().width;
             const relative = Math.max(0, Math.min(1, x / wrapperWidth));
             this.dragRelativeX = null;
@@ -285,6 +288,39 @@ class Renderer extends EventEmitter {
         (_a = this.resizeObserver) === null || _a === void 0 ? void 0 : _a.disconnect();
         (_b = this.unsubscribeOnScroll) === null || _b === void 0 ? void 0 : _b.forEach((unsubscribe) => unsubscribe());
         this.unsubscribeOnScroll = [];
+        this.stopContinuousScroll();
+    }
+    startContinuousScroll() {
+        if (this.autoScrollInterval)
+            return;
+        this.autoScrollInterval = window.setInterval(() => {
+            if (!this.isDragging || this.lastScrollAdjustment === 0) {
+                this.stopContinuousScroll();
+                return;
+            }
+            const { scrollLeft, scrollWidth, clientWidth } = this.scrollContainer;
+            const maxScrollLeft = scrollWidth - clientWidth;
+            const newScrollLeft = Math.max(0, Math.min(maxScrollLeft, scrollLeft + this.lastScrollAdjustment));
+            if (newScrollLeft !== scrollLeft) {
+                this.scrollContainer.scrollLeft = newScrollLeft;
+                console.log('🔄 CONTINUOUS AUTO-SCROLL:', {
+                    scrollLeft,
+                    newScrollLeft,
+                    scrollAdjustment: this.lastScrollAdjustment
+                });
+            }
+            else {
+                // Hit the edge, stop continuous scroll
+                this.stopContinuousScroll();
+            }
+        }, 16); // ~60fps
+    }
+    stopContinuousScroll() {
+        if (this.autoScrollInterval) {
+            clearInterval(this.autoScrollInterval);
+            this.autoScrollInterval = null;
+            this.lastScrollAdjustment = 0;
+        }
     }
     createDelay(delayMs = 10) {
         let timeout;
@@ -631,21 +667,32 @@ class Renderer extends EventEmitter {
         const endEdge = scrollLeft + clientWidth;
         const middle = clientWidth / 2;
         if (this.isDragging) {
-            // During dragging, use smoother auto-scroll with smaller steps
+            // During dragging, use adaptive auto-scroll based on cursor position and speed
             const EDGE_BUFFER = 50; // Start auto-scroll when within 50px of edge
-            const SCROLL_STEP = 10; // Smaller scroll steps for smoother movement
+            const MIN_SCROLL_SPEED = 2; // Minimum scroll speed
+            const MAX_SCROLL_SPEED = 20; // Maximum scroll speed
             const leftBuffer = startEdge + EDGE_BUFFER;
             const rightBuffer = endEdge - EDGE_BUFFER;
             let scrollAdjustment = 0;
             if (progressWidth < leftBuffer) {
-                // Scroll left
-                scrollAdjustment = -SCROLL_STEP;
+                // Scroll left - speed increases as cursor gets closer to edge
+                const distanceFromEdge = Math.max(1, progressWidth - startEdge);
+                const speedMultiplier = Math.max(1, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER * 3);
+                scrollAdjustment = -Math.min(MAX_SCROLL_SPEED, MIN_SCROLL_SPEED * speedMultiplier);
             }
             else if (progressWidth > rightBuffer) {
-                // Scroll right
-                scrollAdjustment = SCROLL_STEP;
+                // Scroll right - speed increases as cursor gets closer to edge
+                const distanceFromEdge = Math.max(1, endEdge - progressWidth);
+                const speedMultiplier = Math.max(1, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER * 3);
+                scrollAdjustment = Math.min(MAX_SCROLL_SPEED, MIN_SCROLL_SPEED * speedMultiplier);
             }
+            // Store the scroll adjustment for continuous scrolling
+            this.lastScrollAdjustment = scrollAdjustment;
             if (scrollAdjustment !== 0) {
+                // Start continuous auto-scroll if not already running
+                if (!this.autoScrollInterval) {
+                    this.startContinuousScroll();
+                }
                 const maxScrollLeft = scrollWidth - clientWidth;
                 const newScrollLeft = Math.max(0, Math.min(maxScrollLeft, scrollLeft + scrollAdjustment));
                 const prevScrollLeft = this.scrollContainer.scrollLeft;
@@ -661,8 +708,13 @@ class Renderer extends EventEmitter {
                     newScrollLeft,
                     scrollAdjustment,
                     scrollDelta: newScrollLeft - prevScrollLeft,
+                    distanceFromEdge: progressWidth < leftBuffer ? progressWidth - startEdge : endEdge - progressWidth,
                     dragRelativeX: this.dragRelativeX
                 });
+            }
+            else {
+                // Stop continuous scroll when not needed
+                this.stopContinuousScroll();
             }
         }
         else {
