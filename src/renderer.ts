@@ -464,9 +464,12 @@ class Renderer extends EventEmitter<RendererEvents> {
     if (isNaN(progress)) return
     if (progress === this.lastCursorProgress) return
     this.lastCursorProgress = progress
-    const percents = progress * 100
-    this.cursor.style.left = `${percents}%`
-    this.cursor.style.transform = `translateX(-${Math.round(percents) === 100 ? this.options.cursorWidth : 0}px)`
+    const wrapperWidth = this.wrapper.getBoundingClientRect().width
+    const x = progress * wrapperWidth
+
+    // Use transform-only positioning to avoid layout thrashing and flicker
+    const offsetPx = progress >= 1 ? (this.options.cursorWidth || 0) : 0
+    this.cursor.style.transform = `translateX(${x - offsetPx}px)`
   }
 
   private syncCursorWithScroll() {
