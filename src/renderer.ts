@@ -36,16 +36,26 @@ class Renderer extends EventEmitter<RendererEvents> {
   private unsubscribeOnScroll: (() => void)[] = []
   private lenis: any = null
   private isDragging = false
-  private dragStartX = 0
-  private currentDragVelocity = 0
   private realTimeProgress = 0
   private animationFrameId: number | null = null
   private isUserInteracting = false
   private interactionTimeout: number | null = null
   private continuousScrollInterval: number | null = null
   private continuousScrollDirection: 'left' | 'right' | null = null
-  private continuousScrollSpeed = 0
-  private lastScrollPosition = 0
+  // Memoized device pixel ratio to avoid repeated look-ups
+  private readonly pixelRatio: number = Math.max(1, window.devicePixelRatio || 1)
+
+  // Cache last cursor progress to skip redundant DOM writes
+  private lastCursorProgress: number = -1
+
+  // Cache wrapper rect during a drag session
+  private wrapperRect: DOMRect | null = null
+
+  // Store last Lenis options hash to avoid unnecessary re-init
+  private lastLenisHash: string | null = null
+
+  // Track DOM listeners to ensure we can remove them in destroy()
+  private domSubscriptions: Array<() => void> = []
 
   constructor(options: WaveSurferOptions, audioElement?: HTMLElement) {
     super()
@@ -98,45 +108,37 @@ class Renderer extends EventEmitter<RendererEvents> {
       return [relativeX, relativeY]
     }
 
-    // Add a click listener
-    this.wrapper.addEventListener('click', (e) => {
+    // Helper to add and track DOM listeners for cleanup
+    const addDOMListener = <E extends Event>(
+      target: EventTarget,
+      type: string,
+      handler: (evt: E) => void,
+      options?: AddEventListenerOptions,
+    ) => {
+      // Cast to the broader EventListener type to satisfy the addEventListener signature
+      const listener: EventListener = handler as unknown as EventListener
+      target.addEventListener(type, listener, options)
+      const unsubscribe = () => target.removeEventListener(type, listener, options)
+      this.domSubscriptions.push(unsubscribe)
+      return unsubscribe
+    }
+
+    // Click & double-click listeners
+    addDOMListener(this.wrapper, 'click', (e: MouseEvent) => {
       const [x, y] = getClickPosition(e)
       this.emit('click', x, y)
     })
 
-    // Add mouse down listener to detect start of user interaction
-    this.wrapper.addEventListener('mousedown', () => {
-      this.startUserInteraction()
-    })
-
-    // Add mouse up listener to detect end of user interaction
-    this.wrapper.addEventListener('mouseup', () => {
-      this.endUserInteraction()
-    })
-
-    // Add mouse leave listener to handle when user moves mouse away
-    this.wrapper.addEventListener('mouseleave', () => {
-      this.endUserInteraction()
-    })
-
-    // Add touch event listeners for mobile devices
-    this.wrapper.addEventListener('touchstart', () => {
-      this.startUserInteraction()
-    })
-
-    this.wrapper.addEventListener('touchend', () => {
-      this.endUserInteraction()
-    })
-
-    this.wrapper.addEventListener('touchcancel', () => {
-      this.endUserInteraction()
-    })
-
-    // Add a double click listener
-    this.wrapper.addEventListener('dblclick', (e) => {
+    addDOMListener(this.wrapper, 'dblclick', (e: MouseEvent) => {
       const [x, y] = getClickPosition(e)
       this.emit('dblclick', x, y)
     })
+
+    // Unified PointerEvents to handle mouse, touch, pen
+    addDOMListener(this.wrapper, 'pointerdown', () => this.startUserInteraction())
+    addDOMListener(this.wrapper, 'pointerup', () => this.endUserInteraction())
+    addDOMListener(this.wrapper, 'pointerleave', () => this.endUserInteraction())
+    addDOMListener(this.wrapper, 'pointercancel', () => this.endUserInteraction())
 
     // Drag
     if (this.options.dragToSeek === true || typeof this.options.dragToSeek === 'object') {
@@ -153,7 +155,7 @@ class Renderer extends EventEmitter<RendererEvents> {
 
     // Re-render the waveform on container resize
     if (typeof ResizeObserver === 'function') {
-      const delay = this.createDelay(100)
+      const delay = this.createIdleDelay(100)
       this.resizeObserver = new ResizeObserver(() => {
         delay()
           .then(() => this.onContainerResize())
@@ -176,10 +178,9 @@ class Renderer extends EventEmitter<RendererEvents> {
         this.wrapper,
         // On drag
         (_, __, x, ___, velocity = 0, mouseX = 0) => {
-          const wrapperWidth = this.wrapper.getBoundingClientRect().width
+          const wrapperWidth = this.wrapperRect?.width ?? this.wrapper.getBoundingClientRect().width
           const relative = Math.max(0, Math.min(1, x / wrapperWidth))
           this.dragRelativeX = relative
-          this.currentDragVelocity = velocity
           this.realTimeProgress = relative
           
           // Start real-time cursor updates
@@ -188,34 +189,19 @@ class Renderer extends EventEmitter<RendererEvents> {
           // Update continuous scroll based on mouse position
           this.updateContinuousScroll(mouseX)
           
-          console.log('🎯 RENDERER DRAG:', {
-            x,
-            wrapperWidth,
-            relative,
-            velocity: velocity.toFixed(2),
-            scrollLeft: this.scrollContainer.scrollLeft,
-            mouseX,
-            continuousScrollDirection: this.continuousScrollDirection
-          })
           this.emit('drag', relative)
         },
         // On start drag
         (x) => {
           this.isDragging = true
           this.startUserInteraction() // Stop smooth scrolling during drag
-          const wrapperWidth = this.wrapper.getBoundingClientRect().width
-          this.dragRelativeX = Math.max(0, Math.min(1, x / wrapperWidth))
+          this.wrapperRect = this.wrapper.getBoundingClientRect()
+          const wrapperWidth = this.wrapperRect.width
+          this.dragRelativeX = this.clamp(x / wrapperWidth, 0, 1)
           this.realTimeProgress = this.dragRelativeX
           
-          // Initialize scroll position tracking
-          this.lastScrollPosition = this.lenis?.animatedScroll || this.scrollContainer.scrollLeft
+
           
-          console.log('🎯 RENDERER DRAG START:', {
-            x,
-            wrapperWidth,
-            dragRelativeX: this.dragRelativeX,
-            lastScrollPosition: this.lastScrollPosition
-          })
           this.emit('dragstart', this.dragRelativeX)
         },
         // On end drag
@@ -223,17 +209,12 @@ class Renderer extends EventEmitter<RendererEvents> {
           this.isDragging = false
           this.stopRealTimeCursorUpdates()
           this.stopContinuousScroll() // Stop continuous scrolling
-          this.currentDragVelocity = 0 // Reset velocity when drag ends
-          const wrapperWidth = this.wrapper.getBoundingClientRect().width
+          const wrapperWidth = this.wrapperRect?.width ?? this.wrapper.getBoundingClientRect().width
           const relative = Math.max(0, Math.min(1, x / wrapperWidth))
           this.dragRelativeX = null
           this.realTimeProgress = 0
+          this.wrapperRect = null
           this.endUserInteraction() // Re-enable smooth scrolling after drag
-          console.log('🎯 RENDERER DRAG END:', {
-            x,
-            wrapperWidth,
-            relative
-          })
           this.emit('dragend', relative)
         },
       ),
@@ -384,6 +365,7 @@ class Renderer extends EventEmitter<RendererEvents> {
 
   destroy() {
     this.subscriptions.forEach((unsubscribe) => unsubscribe())
+    this.domSubscriptions.forEach((unsubscribe) => unsubscribe())
     this.container.remove()
     this.resizeObserver?.disconnect()
     this.unsubscribeOnScroll?.forEach((unsubscribe) => unsubscribe())
@@ -404,38 +386,37 @@ class Renderer extends EventEmitter<RendererEvents> {
   }
 
   private initLenis() {
+    const optionsHash = JSON.stringify({ smooth: true, lerp: 0.05, wheelMultiplier: 0.8, touchMultiplier: 1 })
+    if (this.lenis && this.lastLenisHash === optionsHash) {
+      return // No change in config, skip re-init
+    }
+
     if (this.lenis) {
       this.lenis.destroy()
     }
-    
+
+    this.lastLenisHash = optionsHash
+
     this.lenis = new Lenis({
       wrapper: this.scrollContainer,
       content: this.wrapper,
-      lerp: 0.05, // Slower for smoother experience
+      lerp: 0.05,
       smoothWheel: true,
-      wheelMultiplier: 0.8, // Reduced for slower scrolling
-      touchMultiplier: 1.0, // Reduced for slower touch scrolling
+      wheelMultiplier: 0.8,
+      touchMultiplier: 1.0,
       autoRaf: true,
       orientation: 'horizontal'
     })
     
-    // Listen to scroll events and use Lenis's animatedScroll for perfect sync
     this.lenis.on('scroll', (instance: any) => {
-      // Use Lenis's animatedScroll for perfect synchronization
       const animatedScrollLeft = instance.animatedScroll || 0
       const { scrollWidth, clientWidth } = this.scrollContainer
       const startX = animatedScrollLeft / scrollWidth
       const endX = (animatedScrollLeft + clientWidth) / scrollWidth
       this.emit('scroll', startX, endX, animatedScrollLeft, animatedScrollLeft + clientWidth)
       
-      // During dragging, the cursor should stay with the mouse, not follow auto-scroll
-      // Only update lastScrollPosition for reference, but don't move cursor with scroll
-      if (this.isDragging) {
-        this.lastScrollPosition = animatedScrollLeft
-      }
+
       
-      // Continuously sync cursor position with Lenis scroll position
-      // This ensures perfect synchronization even after drag operations
       this.syncCursorWithScroll()
     })
   }
@@ -447,8 +428,6 @@ class Renderer extends EventEmitter<RendererEvents> {
     
     const updateCursor = () => {
       if (this.isDragging && this.realTimeProgress !== null) {
-        // Update cursor position in real-time during drag
-        // The cursor represents absolute progress in the waveform
         this.updateCursorPosition(this.realTimeProgress)
         this.animationFrameId = requestAnimationFrame(updateCursor)
       } else {
@@ -465,8 +444,6 @@ class Renderer extends EventEmitter<RendererEvents> {
       this.animationFrameId = null
     }
     
-    // After stopping real-time updates, ensure cursor position is perfectly synchronized
-    // with Lenis's animated scroll position
     if (this.realTimeProgress !== null) {
       this.updateCursorPosition(this.realTimeProgress)
     }
@@ -474,75 +451,53 @@ class Renderer extends EventEmitter<RendererEvents> {
 
   private updateCursorPosition(progress: number) {
     if (isNaN(progress)) return
+    if (progress === this.lastCursorProgress) return
+    this.lastCursorProgress = progress
     const percents = progress * 100
     this.cursor.style.left = `${percents}%`
     this.cursor.style.transform = `translateX(-${Math.round(percents) === 100 ? this.options.cursorWidth : 0}px)`
   }
 
   private syncCursorWithScroll() {
-    // Only sync cursor position when NOT dragging to avoid conflicts with mouse position
     if (!this.isDragging && this.realTimeProgress !== null) {
-      // Use the last known real-time progress to maintain cursor position
-      // This ensures the cursor stays in the correct position as Lenis animates the scroll
       this.updateCursorPosition(this.realTimeProgress)
     }
-    // During dragging, cursor position is managed by the real-time cursor updates
-    // from the drag system to keep it synchronized with the mouse position
   }
 
   private startUserInteraction() {
     this.isUserInteracting = true
     
-    // Clear any existing timeout
     if (this.interactionTimeout) {
       clearTimeout(this.interactionTimeout)
     }
     
-    // Temporarily stop Lenis smooth scrolling for precise positioning
     if (this.lenis) {
       this.lenis.stop()
     }
   }
 
   private endUserInteraction() {
-    // Clear any existing timeout
     if (this.interactionTimeout) {
       clearTimeout(this.interactionTimeout)
     }
     
-    // Delay before re-enabling smooth scrolling to allow for precise positioning
     this.interactionTimeout = window.setTimeout(() => {
       this.isUserInteracting = false
       
-      // Re-enable Lenis smooth scrolling
       if (this.lenis) {
         this.lenis.start()
       }
-    }, 500) // 500ms delay to allow for precise positioning
+    }, 500)
   }
 
-  private handlePreciseClick(progress: number) {
-    // For precise positioning, temporarily use instant scroll
-    if (this.isUserInteracting && this.lenis) {
-      const { scrollWidth, clientWidth } = this.scrollContainer
-      const progressWidth = progress * scrollWidth
-      const middle = clientWidth / 2
-      const targetScrollLeft = progressWidth - (this.options.autoCenter ? middle : 0)
-      
-      // Use immediate scroll for precise positioning
-      this.lenis.scrollTo(targetScrollLeft, { immediate: true })
-    }
-  }
+
 
   private startContinuousScroll(direction: 'left' | 'right', speed: number) {
-    // Stop any existing continuous scroll
     this.stopContinuousScroll()
     
     this.continuousScrollDirection = direction
-    this.continuousScrollSpeed = speed
     
-    // Start continuous scrolling with smooth acceleration
-    let currentSpeed = speed * 0.3 // Start at 30% speed
+    let currentSpeed = speed * 0.3
     const maxSpeed = speed
     const acceleration = 0.1
     
@@ -552,38 +507,22 @@ class Renderer extends EventEmitter<RendererEvents> {
         return
       }
       
-      // Gradually increase speed up to maximum
       currentSpeed = Math.min(currentSpeed + acceleration, maxSpeed)
-      
-      // Calculate scroll amount based on direction and speed
       const scrollAmount = this.continuousScrollDirection === 'right' ? currentSpeed : -currentSpeed
-      
-      // Get current scroll position
       const currentScrollLeft = this.lenis?.animatedScroll || this.scrollContainer.scrollLeft
       const newScrollLeft = currentScrollLeft + scrollAmount
-      
-      // Apply bounds checking
       const maxScrollLeft = this.scrollContainer.scrollWidth - this.scrollContainer.clientWidth
-      const clampedScrollLeft = Math.max(0, Math.min(newScrollLeft, maxScrollLeft))
+      const clampedScrollLeft = this.clamp(newScrollLeft, 0, maxScrollLeft)
       
-      // Use Lenis for smooth continuous scrolling
       if (this.lenis) {
-        this.lenis.scrollTo(clampedScrollLeft, { 
-          immediate: true, // Immediate for continuous feel
-          force: true // Force scroll even if stopped
-        })
+        this.lenis.scrollTo(clampedScrollLeft, { immediate: true, force: true })
       } else {
         this.scrollContainer.scrollLeft = clampedScrollLeft
       }
       
-      // During continuous scroll, cursor position is managed by the real-time cursor updates
-      // from the drag system, not by the scroll system. The cursor should stay with the mouse.
-      
-      // Continue scrolling
       this.continuousScrollInterval = requestAnimationFrame(scroll)
     }
     
-    // Start the continuous scroll loop
     this.continuousScrollInterval = requestAnimationFrame(scroll)
   }
 
@@ -593,7 +532,6 @@ class Renderer extends EventEmitter<RendererEvents> {
       this.continuousScrollInterval = null
     }
     this.continuousScrollDirection = null
-    this.continuousScrollSpeed = 0
   }
 
   private updateContinuousScroll(mouseX: number) {
@@ -602,40 +540,31 @@ class Renderer extends EventEmitter<RendererEvents> {
     const containerRect = this.scrollContainer.getBoundingClientRect()
     const relativeX = mouseX - containerRect.left
     const containerWidth = containerRect.width
-    
-    // Define edge zones (20% of container width on each side)
     const edgeZoneWidth = containerWidth * 0.2
     const leftEdgeZone = edgeZoneWidth
     const rightEdgeZone = containerWidth - edgeZoneWidth
     
-    // Calculate if we're in an edge zone and determine scroll speed
     let shouldScroll = false
     let direction: 'left' | 'right' | null = null
     let speed = 0
     
     if (relativeX < leftEdgeZone) {
-      // Left edge zone
       shouldScroll = true
       direction = 'left'
-      // Speed increases as we get closer to the edge (0 to 1)
       const edgeProximity = 1 - (relativeX / leftEdgeZone)
-      speed = Math.max(2, edgeProximity * 12) // Speed range: 2-12 pixels per frame
+      speed = Math.max(2, edgeProximity * 12)
     } else if (relativeX > rightEdgeZone) {
-      // Right edge zone
       shouldScroll = true
       direction = 'right'
-      // Speed increases as we get closer to the edge (0 to 1)
       const edgeProximity = (relativeX - rightEdgeZone) / edgeZoneWidth
-      speed = Math.max(2, edgeProximity * 12) // Speed range: 2-12 pixels per frame
+      speed = Math.max(2, edgeProximity * 12)
     }
     
     if (shouldScroll && direction) {
-      // Start or update continuous scroll
       if (this.continuousScrollDirection !== direction) {
         this.startContinuousScroll(direction, speed)
       }
     } else {
-      // Stop continuous scroll
       this.stopContinuousScroll()
     }
   }
@@ -666,6 +595,35 @@ class Renderer extends EventEmitter<RendererEvents> {
     }
   }
 
+  // Like createDelay but prefers requestIdleCallback when available
+  private createIdleDelay(delayMs = 10): () => Promise<void> {
+    if ('requestIdleCallback' in window) {
+      let id: number | null = null
+      let reject: (() => void) | undefined
+
+      const clear = () => {
+        if (id !== null) (window as any).cancelIdleCallback(id)
+        if (reject) reject()
+      }
+
+      this.timeouts.push(clear)
+
+      return () => {
+        return new Promise<void>((resolve, rej) => {
+          clear()
+          reject = rej
+          id = (window as any).requestIdleCallback(() => {
+            id = null
+            reject = undefined
+            resolve()
+          }, { timeout: delayMs })
+        })
+      }
+    }
+
+    return this.createDelay(delayMs)
+  }
+
   // Convert array of color values to linear gradient
   private convertColorValues(color?: WaveSurferOptions['waveColor']): string | CanvasGradient {
     if (!Array.isArray(color)) return color || ''
@@ -686,7 +644,12 @@ class Renderer extends EventEmitter<RendererEvents> {
   }
 
   private getPixelRatio() {
-    return Math.max(1, window.devicePixelRatio || 1)
+    return this.pixelRatio
+  }
+
+  // Simple clamp helper
+  private clamp(value: number, min: number, max: number): number {
+    return Math.min(Math.max(value, min), max)
   }
 
   private renderBarWaveform(
@@ -701,11 +664,8 @@ class Renderer extends EventEmitter<RendererEvents> {
 
     const { width, height } = ctx.canvas
     const halfHeight = height / 2
-    const pixelRatio = this.getPixelRatio()
 
-    const barWidth = options.barWidth ? options.barWidth * pixelRatio : 1
-    const barGap = options.barGap ? options.barGap * pixelRatio : options.barWidth ? barWidth / 2 : 0
-    const barRadius = options.barRadius || 0
+    const { barWidth, barGap, barRadius } = this.getBarDimensions(options)
     const barIndexScale = width / (barWidth + barGap) / length
 
     const rectFn = barRadius && 'roundRect' in ctx ? 'roundRect' : 'rect'
@@ -1072,12 +1032,10 @@ class Renderer extends EventEmitter<RendererEvents> {
   }
 
   private scrollIntoView(progress: number, isPlaying = false) {
-    // Don't auto-scroll if user is actively interacting (for precise positioning)
     if (this.isUserInteracting && !isPlaying) {
       return
     }
 
-    // Use Lenis's animatedScroll for perfect synchronization
     const animatedScrollLeft = this.lenis?.animatedScroll || this.scrollContainer.scrollLeft
     const { scrollWidth, clientWidth } = this.scrollContainer
     const progressWidth = progress * scrollWidth
@@ -1086,32 +1044,28 @@ class Renderer extends EventEmitter<RendererEvents> {
     const middle = clientWidth / 2
 
     if (this.isDragging) {
-      // During dragging, use Lenis for smooth velocity-based scrolling
       const EDGE_BUFFER = 80
       const leftBuffer = startEdge + EDGE_BUFFER
       const rightBuffer = endEdge - EDGE_BUFFER
       
       if (progressWidth < leftBuffer || progressWidth > rightBuffer) {
-        // Calculate target scroll position based on drag velocity
         const targetScrollLeft = progressWidth - middle
         
-        // Use Lenis scrollTo for smooth velocity-aware scrolling
         if (this.lenis) {
           this.lenis.scrollTo(targetScrollLeft, {
-            lerp: 0.08, // Slower lerp for smoother drag experience
+            lerp: 0.08,
             duration: 0.4,
             immediate: false
           })
         }
       }
     } else {
-      // Normal scrolling behavior
       if (progressWidth < startEdge || progressWidth > endEdge) {
         const targetScrollLeft = progressWidth - (this.options.autoCenter ? middle : 0)
         
         if (this.lenis) {
           this.lenis.scrollTo(targetScrollLeft, {
-            lerp: 0.06, // Slower for normal scrolling
+            lerp: 0.06,
             duration: 0.6,
             immediate: false
           })
@@ -1120,7 +1074,6 @@ class Renderer extends EventEmitter<RendererEvents> {
         }
       }
 
-      // Keep the cursor centered when playing
       const center = progressWidth - animatedScrollLeft - middle
       if (isPlaying && this.options.autoCenter && center > 0) {
         const newScrollLeft = animatedScrollLeft + Math.min(center, 10)
@@ -1139,7 +1092,6 @@ class Renderer extends EventEmitter<RendererEvents> {
     this.canvasWrapper.style.clipPath = `polygon(${percents}% 0%, 100% 0%, 100% 100%, ${percents}% 100%)`
     this.progressWrapper.style.width = `${percents}%`
     
-    // Only update cursor position if not dragging (real-time updates handle it during drag)
     if (!this.isDragging) {
       this.updateCursorPosition(progress)
     }
@@ -1179,6 +1131,14 @@ class Renderer extends EventEmitter<RendererEvents> {
         })
       }),
     )
+  }
+
+  // Helper that computes bar metrics taking pixelRatio into account
+  private getBarDimensions(options: WaveSurferOptions) {
+    const barWidth = options.barWidth ? options.barWidth * this.pixelRatio : 1
+    const barGap = options.barGap ? options.barGap * this.pixelRatio : options.barWidth ? barWidth / 2 : 0
+    const barRadius = options.barRadius || 0
+    return { barWidth, barGap, barRadius }
   }
 }
 

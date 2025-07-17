@@ -31,16 +31,17 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private unsubscribeOnScroll;
     private lenis;
     private isDragging;
-    private dragStartX;
-    private currentDragVelocity;
     private realTimeProgress;
     private animationFrameId;
     private isUserInteracting;
     private interactionTimeout;
     private continuousScrollInterval;
     private continuousScrollDirection;
-    private continuousScrollSpeed;
-    private lastScrollPosition;
+    private readonly pixelRatio;
+    private lastCursorProgress;
+    private wrapperRect;
+    private lastLenisHash;
+    private domSubscriptions;
     constructor(options: WaveSurferOptions, audioElement?: HTMLElement);
     private parentFromOptionsContainer;
     private initEvents;
@@ -63,13 +64,14 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private syncCursorWithScroll;
     private startUserInteraction;
     private endUserInteraction;
-    private handlePreciseClick;
     private startContinuousScroll;
     private stopContinuousScroll;
     private updateContinuousScroll;
     private createDelay;
+    private createIdleDelay;
     private convertColorValues;
     private getPixelRatio;
+    private clamp;
     private renderBarWaveform;
     private renderLineWaveform;
     private renderWaveform;
@@ -82,5 +84,6 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private scrollIntoView;
     renderProgress(progress: number, isPlaying?: boolean): void;
     exportImage(format: string, quality: number, type: 'dataURL' | 'blob'): Promise<string[] | Blob[]>;
+    private getBarDimensions;
 }
 export default Renderer;
