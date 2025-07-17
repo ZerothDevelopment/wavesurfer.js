@@ -315,6 +315,9 @@ class Renderer extends EventEmitter<RendererEvents> {
           left: 0;
           height: 100%;
           border-radius: 2px;
+          will-change: left, transform;
+          contain: paint; /* isolate painting to avoid flicker */
+          transform: translateZ(0); /* promote to its own layer */
         }
       </style>
 
