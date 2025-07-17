@@ -489,6 +489,25 @@ class Renderer extends EventEmitter {
             else {
                 this.scrollContainer.scrollLeft = clampedScrollLeft;
             }
+            // Update cursor position in real-time during continuous scroll
+            // Calculate the current progress based on scroll position and update cursor
+            const { scrollWidth, clientWidth } = this.scrollContainer;
+            const scrollProgress = clampedScrollLeft / scrollWidth;
+            const viewportWidth = clientWidth / scrollWidth;
+            // Update real-time progress to maintain cursor position during continuous scroll
+            // Keep the cursor at the same relative position within the viewport
+            const cursorPositionInViewport = this.realTimeProgress - scrollProgress;
+            // If cursor is moving out of viewport, adjust realTimeProgress to keep it visible
+            if (cursorPositionInViewport < 0) {
+                // Cursor is moving left out of viewport, keep it at left edge
+                this.realTimeProgress = scrollProgress;
+            }
+            else if (cursorPositionInViewport > viewportWidth) {
+                // Cursor is moving right out of viewport, keep it at right edge
+                this.realTimeProgress = scrollProgress + viewportWidth;
+            }
+            // Update cursor position immediately
+            this.updateCursorPosition(this.realTimeProgress);
             // Continue scrolling
             this.continuousScrollInterval = requestAnimationFrame(scroll);
         };
