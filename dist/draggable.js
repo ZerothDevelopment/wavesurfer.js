@@ -14,6 +14,15 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
         const initialRect = element.getBoundingClientRect();
         const initialRelativeX = initialMouseX - initialRect.left;
         const initialRelativeY = initialMouseY - initialRect.top;
+        // Find the scroll container (look for parent with scrollable overflow)
+        let scrollContainer = element.parentElement;
+        while (scrollContainer && scrollContainer !== document.body) {
+            const style = window.getComputedStyle(scrollContainer);
+            if (style.overflowX === 'auto' || style.overflowX === 'scroll') {
+                break;
+            }
+            scrollContainer = scrollContainer.parentElement;
+        }
         let isDragging = false;
         const touchStartTime = Date.now();
         // Enhanced drag tracking variables
@@ -21,11 +30,12 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
         let lastMouseX = initialMouseX;
         let lastMouseY = initialMouseY;
         let accumulatedDx = 0;
+        let lastScrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
         // Improved damping and sensitivity settings
-        const DRAG_DAMPING = 0.9; // Slightly less damping for more responsive feel
-        const EDGE_THRESHOLD = 60; // Increased threshold for smoother edge behavior
-        const MIN_DRAG_INTERVAL = 8; // Reduced interval for more responsive updates (120fps)
-        const SCROLL_COMPENSATION = 0.95; // Compensation factor for scroll-induced position changes
+        const DRAG_DAMPING = 0.85; // Reduced damping for better responsiveness
+        const EDGE_THRESHOLD = 50; // Balanced threshold for edge detection
+        const MIN_DRAG_INTERVAL = 8; // 120fps for smooth updates
+        const MIN_MOVEMENT_THRESHOLD = 0.3; // Lower threshold for more responsive feel
         const onPointerMove = (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -33,21 +43,28 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
                 return;
             const currentTime = Date.now();
             const timeDelta = currentTime - lastDragTime;
-            // Throttle drag updates but allow more frequent updates
+            // Throttle drag updates for performance
             if (timeDelta < MIN_DRAG_INTERVAL)
                 return;
             const currentMouseX = event.clientX;
             const currentMouseY = event.clientY;
-            // Calculate movement from last position (not initial position)
+            // Calculate movement from last position
             const rawDx = currentMouseX - lastMouseX;
             const rawDy = currentMouseY - lastMouseY;
             // Check if we should start dragging
             const totalDx = currentMouseX - initialMouseX;
             const totalDy = currentMouseY - initialMouseY;
             if (isDragging || Math.abs(totalDx) > threshold || Math.abs(totalDy) > threshold) {
-                // Get current element position (accounts for any scrolling that occurred)
+                // Get current element position and detect scroll changes
                 const currentRect = element.getBoundingClientRect();
                 const { left, top, width } = currentRect;
+                // Detect scroll changes and compensate
+                let scrollDelta = 0;
+                if (scrollContainer) {
+                    const currentScrollLeft = scrollContainer.scrollLeft;
+                    scrollDelta = currentScrollLeft - lastScrollLeft;
+                    lastScrollLeft = currentScrollLeft;
+                }
                 // Calculate current mouse position relative to element
                 const currentRelativeX = currentMouseX - left;
                 const currentRelativeY = currentMouseY - top;
@@ -59,21 +76,27 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
                 const distanceFromLeftEdge = currentRelativeX;
                 const distanceFromRightEdge = width - currentRelativeX;
                 const minDistanceFromEdge = Math.min(distanceFromLeftEdge, distanceFromRightEdge);
-                // Apply progressive edge damping
+                // Apply progressive edge damping with smoother curve
                 let edgeDamping = 1.0;
                 if (minDistanceFromEdge < EDGE_THRESHOLD) {
-                    // Smoother edge damping curve
                     const edgeRatio = minDistanceFromEdge / EDGE_THRESHOLD;
-                    edgeDamping = Math.max(0.15, edgeRatio * edgeRatio); // Quadratic falloff
+                    // Smoother cubic curve for more natural feel
+                    edgeDamping = Math.max(0.1, edgeRatio * edgeRatio * edgeRatio);
                 }
-                // Apply damping to the movement delta
-                const dampedDx = rawDx * DRAG_DAMPING * edgeDamping;
+                // Compensate for scroll-induced position changes
+                let compensatedDx = rawDx;
+                if (scrollDelta !== 0) {
+                    // When scrolling occurs, adjust the movement to maintain cursor position
+                    compensatedDx = rawDx - scrollDelta;
+                }
+                // Apply damping to the compensated movement
+                const dampedDx = compensatedDx * DRAG_DAMPING * edgeDamping;
                 const dampedDy = rawDy * DRAG_DAMPING * edgeDamping;
                 // Accumulate small movements to prevent precision loss
                 accumulatedDx += dampedDx;
                 // Only trigger drag if accumulated movement is significant
-                if (Math.abs(accumulatedDx) > 0.5) { // Reduced threshold for more responsive feel
-                    // Use current relative position for more accurate positioning
+                if (Math.abs(accumulatedDx) > MIN_MOVEMENT_THRESHOLD) {
+                    // Use current relative position for accurate positioning
                     onDrag(accumulatedDx, dampedDy, currentRelativeX, currentRelativeY);
                     accumulatedDx = 0; // Reset accumulator
                 }
