@@ -19,18 +19,27 @@ export function makeDraggable(
     event.preventDefault()
     event.stopPropagation()
 
-    let startX = event.clientX
-    let startY = event.clientY
+    // Store initial positions
+    const initialMouseX = event.clientX
+    const initialMouseY = event.clientY
+    const initialRect = element.getBoundingClientRect()
+    const initialRelativeX = initialMouseX - initialRect.left
+    const initialRelativeY = initialMouseY - initialRect.top
+    
     let isDragging = false
     const touchStartTime = Date.now()
     
-    // Add scroll damping variables
+    // Enhanced drag tracking variables
     let lastDragTime = Date.now()
-    let dragVelocity = 0
+    let lastMouseX = initialMouseX
+    let lastMouseY = initialMouseY
     let accumulatedDx = 0
-    const DRAG_DAMPING = 0.85 // Reduce drag sensitivity
-    const EDGE_THRESHOLD = 50 // Pixels from edge to start reducing sensitivity
-    const MIN_DRAG_INTERVAL = 16 // Minimum time between drag updates (60fps)
+    
+    // Improved damping and sensitivity settings
+    const DRAG_DAMPING = 0.9 // Slightly less damping for more responsive feel
+    const EDGE_THRESHOLD = 60 // Increased threshold for smoother edge behavior
+    const MIN_DRAG_INTERVAL = 8 // Reduced interval for more responsive updates (120fps)
+    const SCROLL_COMPENSATION = 0.95 // Compensation factor for scroll-induced position changes
 
     const onPointerMove = (event: PointerEvent) => {
       event.preventDefault()
@@ -41,65 +50,76 @@ export function makeDraggable(
       const currentTime = Date.now()
       const timeDelta = currentTime - lastDragTime
       
-      // Throttle drag updates to prevent excessive scrolling
+      // Throttle drag updates but allow more frequent updates
       if (timeDelta < MIN_DRAG_INTERVAL) return
       
-      const x = event.clientX
-      const y = event.clientY
-      const dx = x - startX
-      const dy = y - startY
-
-      if (isDragging || Math.abs(dx) > threshold || Math.abs(dy) > threshold) {
-        const rect = element.getBoundingClientRect()
-        const { left, top, width } = rect
+      const currentMouseX = event.clientX
+      const currentMouseY = event.clientY
+      
+      // Calculate movement from last position (not initial position)
+      const rawDx = currentMouseX - lastMouseX
+      const rawDy = currentMouseY - lastMouseY
+      
+      // Check if we should start dragging
+      const totalDx = currentMouseX - initialMouseX
+      const totalDy = currentMouseY - initialMouseY
+      
+      if (isDragging || Math.abs(totalDx) > threshold || Math.abs(totalDy) > threshold) {
+        // Get current element position (accounts for any scrolling that occurred)
+        const currentRect = element.getBoundingClientRect()
+        const { left, top, width } = currentRect
+        
+        // Calculate current mouse position relative to element
+        const currentRelativeX = currentMouseX - left
+        const currentRelativeY = currentMouseY - top
 
         if (!isDragging) {
-          onStart?.(startX - left, startY - top)
+          onStart?.(initialRelativeX, initialRelativeY)
           isDragging = true
         }
 
-        // Calculate distance from edges
-        const relativeX = x - left
-        const distanceFromLeftEdge = relativeX
-        const distanceFromRightEdge = width - relativeX
+        // Calculate distance from edges based on current position
+        const distanceFromLeftEdge = currentRelativeX
+        const distanceFromRightEdge = width - currentRelativeX
         const minDistanceFromEdge = Math.min(distanceFromLeftEdge, distanceFromRightEdge)
         
-        // Apply edge damping - reduce sensitivity near edges
+        // Apply progressive edge damping
         let edgeDamping = 1.0
         if (minDistanceFromEdge < EDGE_THRESHOLD) {
-          edgeDamping = Math.max(0.1, minDistanceFromEdge / EDGE_THRESHOLD)
+          // Smoother edge damping curve
+          const edgeRatio = minDistanceFromEdge / EDGE_THRESHOLD
+          edgeDamping = Math.max(0.15, edgeRatio * edgeRatio) // Quadratic falloff
         }
         
-        // Apply overall damping and edge damping
-        const dampedDx = dx * DRAG_DAMPING * edgeDamping
-        const dampedDy = dy * DRAG_DAMPING * edgeDamping
+        // Apply damping to the movement delta
+        const dampedDx = rawDx * DRAG_DAMPING * edgeDamping
+        const dampedDy = rawDy * DRAG_DAMPING * edgeDamping
         
-        // Accumulate small movements to prevent loss of precision
+        // Accumulate small movements to prevent precision loss
         accumulatedDx += dampedDx
         
         // Only trigger drag if accumulated movement is significant
-        if (Math.abs(accumulatedDx) > 1) {
-          onDrag(accumulatedDx, dampedDy, x - left, y - top)
+        if (Math.abs(accumulatedDx) > 0.5) { // Reduced threshold for more responsive feel
+          // Use current relative position for more accurate positioning
+          onDrag(accumulatedDx, dampedDy, currentRelativeX, currentRelativeY)
           accumulatedDx = 0 // Reset accumulator
         }
 
-        // Update velocity for smoother movement
-        dragVelocity = dampedDx / (timeDelta || 1)
+        // Update tracking variables
         lastDragTime = currentTime
-        
-        startX = x
-        startY = y
+        lastMouseX = currentMouseX
+        lastMouseY = currentMouseY
       }
     }
 
     const onPointerUp = (event: PointerEvent) => {
       if (isDragging) {
-        const x = event.clientX
-        const y = event.clientY
-        const rect = element.getBoundingClientRect()
-        const { left, top } = rect
+        const currentRect = element.getBoundingClientRect()
+        const { left, top } = currentRect
+        const finalX = event.clientX - left
+        const finalY = event.clientY - top
 
-        onEnd?.(x - left, y - top)
+        onEnd?.(finalX, finalY)
       }
       unsubscribeDocument()
     }
