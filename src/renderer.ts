@@ -758,22 +758,39 @@ class Renderer extends EventEmitter<RendererEvents> {
     const middle = clientWidth / 2
 
     if (this.isDragging) {
-      // During dragging, let the draggable system handle scroll compensation
-      // Only do minimal auto-scroll to keep cursor in view
-      if (progressWidth < startEdge || progressWidth > endEdge) {
+      // During dragging, use smoother auto-scroll with smaller steps
+      const EDGE_BUFFER = 50 // Start auto-scroll when within 50px of edge
+      const SCROLL_STEP = 10 // Smaller scroll steps for smoother movement
+      const leftBuffer = startEdge + EDGE_BUFFER
+      const rightBuffer = endEdge - EDGE_BUFFER
+      
+      let scrollAdjustment = 0
+      
+      if (progressWidth < leftBuffer) {
+        // Scroll left
+        scrollAdjustment = -SCROLL_STEP
+      } else if (progressWidth > rightBuffer) {
+        // Scroll right
+        scrollAdjustment = SCROLL_STEP
+      }
+      
+      if (scrollAdjustment !== 0) {
         const maxScrollLeft = scrollWidth - clientWidth
-        const idealScrollLeft = Math.max(0, Math.min(maxScrollLeft, progressWidth - middle))
+        const newScrollLeft = Math.max(0, Math.min(maxScrollLeft, scrollLeft + scrollAdjustment))
         const prevScrollLeft = this.scrollContainer.scrollLeft
-        this.scrollContainer.scrollLeft = idealScrollLeft
+        this.scrollContainer.scrollLeft = newScrollLeft
         
         console.log('🔄 RENDERER AUTO-SCROLL:', {
           progress,
           progressWidth,
           startEdge,
           endEdge,
+          leftBuffer,
+          rightBuffer,
           prevScrollLeft,
-          newScrollLeft: idealScrollLeft,
-          scrollDelta: idealScrollLeft - prevScrollLeft,
+          newScrollLeft,
+          scrollAdjustment,
+          scrollDelta: newScrollLeft - prevScrollLeft,
           dragRelativeX: this.dragRelativeX
         })
       }
