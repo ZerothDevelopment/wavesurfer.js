@@ -54,6 +54,7 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private startRealTimeCursorUpdates;
     private stopRealTimeCursorUpdates;
     private updateCursorPosition;
+    private syncCursorWithScroll;
     private createDelay;
     private convertColorValues;
     private getPixelRatio;

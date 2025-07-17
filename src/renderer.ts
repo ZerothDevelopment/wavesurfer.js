@@ -364,12 +364,18 @@ class Renderer extends EventEmitter<RendererEvents> {
       orientation: 'horizontal'
     })
     
-    // Listen to scroll events
-    this.lenis.on('scroll', (e: any) => {
-      const { scrollLeft, scrollWidth, clientWidth } = this.scrollContainer
-      const startX = scrollLeft / scrollWidth
-      const endX = (scrollLeft + clientWidth) / scrollWidth
-      this.emit('scroll', startX, endX, scrollLeft, scrollLeft + clientWidth)
+    // Listen to scroll events and use Lenis's animatedScroll for perfect sync
+    this.lenis.on('scroll', (instance: any) => {
+      // Use Lenis's animatedScroll for perfect synchronization
+      const animatedScrollLeft = instance.animatedScroll || 0
+      const { scrollWidth, clientWidth } = this.scrollContainer
+      const startX = animatedScrollLeft / scrollWidth
+      const endX = (animatedScrollLeft + clientWidth) / scrollWidth
+      this.emit('scroll', startX, endX, animatedScrollLeft, animatedScrollLeft + clientWidth)
+      
+      // Continuously sync cursor position with Lenis scroll position
+      // This ensures perfect synchronization even after drag operations
+      this.syncCursorWithScroll()
     })
   }
 
@@ -381,6 +387,7 @@ class Renderer extends EventEmitter<RendererEvents> {
     const updateCursor = () => {
       if (this.isDragging && this.realTimeProgress !== null) {
         // Update cursor position in real-time during drag
+        // The cursor represents absolute progress in the waveform
         this.updateCursorPosition(this.realTimeProgress)
         this.animationFrameId = requestAnimationFrame(updateCursor)
       } else {
@@ -396,6 +403,12 @@ class Renderer extends EventEmitter<RendererEvents> {
       cancelAnimationFrame(this.animationFrameId)
       this.animationFrameId = null
     }
+    
+    // After stopping real-time updates, ensure cursor position is perfectly synchronized
+    // with Lenis's animated scroll position
+    if (this.realTimeProgress !== null) {
+      this.updateCursorPosition(this.realTimeProgress)
+    }
   }
 
   private updateCursorPosition(progress: number) {
@@ -404,6 +417,17 @@ class Renderer extends EventEmitter<RendererEvents> {
     this.cursor.style.left = `${percents}%`
     this.cursor.style.transform = `translateX(-${Math.round(percents) === 100 ? this.options.cursorWidth : 0}px)`
   }
+
+  private syncCursorWithScroll() {
+    // Only sync if we're not currently dragging (to avoid conflicts)
+    if (!this.isDragging && this.realTimeProgress !== null) {
+      // Use the last known real-time progress to maintain cursor position
+      // This ensures the cursor stays in the correct position as Lenis animates the scroll
+      this.updateCursorPosition(this.realTimeProgress)
+    }
+  }
+
+
 
   private createDelay(delayMs = 10): () => Promise<void> {
     let timeout: ReturnType<typeof setTimeout> | undefined
@@ -835,10 +859,12 @@ class Renderer extends EventEmitter<RendererEvents> {
   }
 
   private scrollIntoView(progress: number, isPlaying = false) {
-    const { scrollLeft, scrollWidth, clientWidth } = this.scrollContainer
+    // Use Lenis's animatedScroll for perfect synchronization
+    const animatedScrollLeft = this.lenis?.animatedScroll || this.scrollContainer.scrollLeft
+    const { scrollWidth, clientWidth } = this.scrollContainer
     const progressWidth = progress * scrollWidth
-    const startEdge = scrollLeft
-    const endEdge = scrollLeft + clientWidth
+    const startEdge = animatedScrollLeft
+    const endEdge = animatedScrollLeft + clientWidth
     const middle = clientWidth / 2
 
     if (this.isDragging) {
@@ -877,9 +903,9 @@ class Renderer extends EventEmitter<RendererEvents> {
       }
 
       // Keep the cursor centered when playing
-      const center = progressWidth - scrollLeft - middle
+      const center = progressWidth - animatedScrollLeft - middle
       if (isPlaying && this.options.autoCenter && center > 0) {
-        const newScrollLeft = scrollLeft + Math.min(center, 10)
+        const newScrollLeft = animatedScrollLeft + Math.min(center, 10)
         if (this.lenis) {
           this.lenis.scrollTo(newScrollLeft, { immediate: true })
         } else {
