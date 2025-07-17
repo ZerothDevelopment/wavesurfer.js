@@ -313,7 +313,7 @@ class Renderer extends EventEmitter {
                 // Hit the edge, stop continuous scroll
                 this.stopContinuousScroll();
             }
-        }, 16); // ~60fps
+        }, 8); // ~120fps for smoother scrolling and reduced cursor lag
     }
     stopContinuousScroll() {
         if (this.autoScrollInterval) {
@@ -669,21 +669,21 @@ class Renderer extends EventEmitter {
         if (this.isDragging) {
             // During dragging, use adaptive auto-scroll based on cursor position and speed
             const EDGE_BUFFER = 50; // Start auto-scroll when within 50px of edge
-            const MIN_SCROLL_SPEED = 2; // Minimum scroll speed
-            const MAX_SCROLL_SPEED = 20; // Maximum scroll speed
+            const MIN_SCROLL_SPEED = 5; // Increased minimum scroll speed
+            const MAX_SCROLL_SPEED = 40; // Increased maximum scroll speed for faster response
             const leftBuffer = startEdge + EDGE_BUFFER;
             const rightBuffer = endEdge - EDGE_BUFFER;
             let scrollAdjustment = 0;
             if (progressWidth < leftBuffer) {
                 // Scroll left - speed increases as cursor gets closer to edge
                 const distanceFromEdge = Math.max(1, progressWidth - startEdge);
-                const speedMultiplier = Math.max(1, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER * 3);
+                const speedMultiplier = Math.max(1, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER * 4); // Increased multiplier
                 scrollAdjustment = -Math.min(MAX_SCROLL_SPEED, MIN_SCROLL_SPEED * speedMultiplier);
             }
             else if (progressWidth > rightBuffer) {
                 // Scroll right - speed increases as cursor gets closer to edge
                 const distanceFromEdge = Math.max(1, endEdge - progressWidth);
-                const speedMultiplier = Math.max(1, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER * 3);
+                const speedMultiplier = Math.max(1, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER * 4); // Increased multiplier
                 scrollAdjustment = Math.min(MAX_SCROLL_SPEED, MIN_SCROLL_SPEED * speedMultiplier);
             }
             // Store the scroll adjustment for continuous scrolling

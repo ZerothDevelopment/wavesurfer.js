@@ -36,8 +36,8 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
         let lastScrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
         // Optimized for smooth continuous scrolling
         const DRAG_DAMPING = 0.98; // Minimal damping for maximum responsiveness
-        const MIN_DRAG_INTERVAL = 8; // 120fps - balanced for smooth performance
-        const MIN_MOVEMENT_THRESHOLD = 0.05; // Very responsive threshold
+        const MIN_DRAG_INTERVAL = 4; // 240fps - increased frequency for smoother auto-scroll response
+        const MIN_MOVEMENT_THRESHOLD = 0.01; // More responsive threshold for rapid scrolling
         const onPointerMove = (event) => {
             event.preventDefault();
             event.stopPropagation();
