@@ -50,7 +50,7 @@ export function makeDraggable(
     const DRAG_DAMPING = 0.98 // Minimal damping for maximum responsiveness
     const MIN_DRAG_INTERVAL = 8 // 120fps - balanced for smooth performance
     const MIN_MOVEMENT_THRESHOLD = 0.05 // Very responsive threshold
-    const SCROLL_COMPENSATION_FACTOR = 1 // Fully compensate for container scroll, keeping pointer aligned
+
 
     const onPointerMove = (event: PointerEvent) => {
       event.preventDefault()
@@ -112,8 +112,8 @@ export function makeDraggable(
         // Partial scroll compensation for smooth scrolling system
         let compensatedDx = rawDx
         if (Math.abs(scrollDelta) > 0.5) {
-          // Partial compensation works better with smooth scrolling
-          compensatedDx = rawDx - (scrollDelta * SCROLL_COMPENSATION_FACTOR)
+          // Reduced compensation to prevent cursor jumping
+          compensatedDx = rawDx - (scrollDelta * 0.5)
         }
         
         // Minimal damping for maximum responsiveness

@@ -739,20 +739,12 @@ class Renderer extends EventEmitter<RendererEvents> {
     const middle = clientWidth / 2
 
     if (this.isDragging) {
-      // Keep the cursor roughly centered while dragging, except at the very edges
-      const maxScrollLeft = scrollWidth - clientWidth
-      const idealScrollLeft = Math.max(0, Math.min(maxScrollLeft, progressWidth - middle))
-
-      const prevScroll = scrollLeft
-      this.scrollContainer.scrollLeft = idealScrollLeft
-
-      // Compensate drag position so cursor stays under mouse
-      const scrollShift = idealScrollLeft - prevScroll
-      if (scrollShift !== 0 && this.dragRelativeX != null) {
-        const wrapperW = this.wrapper.getBoundingClientRect().width
-        const shiftRelative = scrollShift / wrapperW
-        this.dragRelativeX = Math.max(0, Math.min(1, this.dragRelativeX + shiftRelative))
-        this.emit('drag', this.dragRelativeX)
+      // During dragging, let the draggable system handle scroll compensation
+      // Only do minimal auto-scroll to keep cursor in view
+      if (progressWidth < startEdge || progressWidth > endEdge) {
+        const maxScrollLeft = scrollWidth - clientWidth
+        const idealScrollLeft = Math.max(0, Math.min(maxScrollLeft, progressWidth - middle))
+        this.scrollContainer.scrollLeft = idealScrollLeft
       }
     } else {
       if (progressWidth < startEdge || progressWidth > endEdge) {
