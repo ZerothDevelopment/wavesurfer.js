@@ -428,27 +428,10 @@ class Renderer extends EventEmitter<RendererEvents> {
       const endX = (animatedScrollLeft + clientWidth) / scrollWidth
       this.emit('scroll', startX, endX, animatedScrollLeft, animatedScrollLeft + clientWidth)
       
-      // During dragging, track scroll changes and update cursor accordingly
-      if (this.isDragging && this.realTimeProgress !== null) {
-        // Calculate how much the scroll has changed
-        const currentScrollLeft = animatedScrollLeft
-        const lastScrollLeft = this.lastScrollPosition || currentScrollLeft
-        const scrollDelta = currentScrollLeft - lastScrollLeft
-        
-        // Only update if there's a meaningful scroll change
-        if (Math.abs(scrollDelta) > 0.1) {
-          const progressDelta = scrollDelta / scrollWidth
-          
-          // Update cursor position to follow the scroll
-          this.realTimeProgress += progressDelta
-          this.realTimeProgress = Math.max(0, Math.min(1, this.realTimeProgress))
-          
-          // Update cursor position immediately
-          this.updateCursorPosition(this.realTimeProgress)
-        }
-        
-        // Store current scroll position for next comparison
-        this.lastScrollPosition = currentScrollLeft
+      // During dragging, the cursor should stay with the mouse, not follow auto-scroll
+      // Only update lastScrollPosition for reference, but don't move cursor with scroll
+      if (this.isDragging) {
+        this.lastScrollPosition = animatedScrollLeft
       }
       
       // Continuously sync cursor position with Lenis scroll position
@@ -497,15 +480,14 @@ class Renderer extends EventEmitter<RendererEvents> {
   }
 
   private syncCursorWithScroll() {
-    // Always sync cursor position when dragging to ensure it follows scroll
-    if (this.isDragging && this.realTimeProgress !== null) {
-      // During drag, continuously update cursor position to follow scroll
-      this.updateCursorPosition(this.realTimeProgress)
-    } else if (!this.isDragging && this.realTimeProgress !== null) {
+    // Only sync cursor position when NOT dragging to avoid conflicts with mouse position
+    if (!this.isDragging && this.realTimeProgress !== null) {
       // Use the last known real-time progress to maintain cursor position
       // This ensures the cursor stays in the correct position as Lenis animates the scroll
       this.updateCursorPosition(this.realTimeProgress)
     }
+    // During dragging, cursor position is managed by the real-time cursor updates
+    // from the drag system to keep it synchronized with the mouse position
   }
 
   private startUserInteraction() {
@@ -594,20 +576,8 @@ class Renderer extends EventEmitter<RendererEvents> {
         this.scrollContainer.scrollLeft = clampedScrollLeft
       }
       
-      // Update cursor position during continuous scroll
-      // The cursor should move along with the scroll to maintain its relative position
-      const { scrollWidth } = this.scrollContainer
-      const scrollDelta = clampedScrollLeft - currentScrollLeft
-      const progressDelta = scrollDelta / scrollWidth
-      
-      // Move the cursor along with the scroll
-      this.realTimeProgress += progressDelta
-      
-      // Ensure cursor stays within bounds [0, 1]
-      this.realTimeProgress = Math.max(0, Math.min(1, this.realTimeProgress))
-      
-      // Update cursor position immediately
-      this.updateCursorPosition(this.realTimeProgress)
+      // During continuous scroll, cursor position is managed by the real-time cursor updates
+      // from the drag system, not by the scroll system. The cursor should stay with the mouse.
       
       // Continue scrolling
       this.continuousScrollInterval = requestAnimationFrame(scroll)
