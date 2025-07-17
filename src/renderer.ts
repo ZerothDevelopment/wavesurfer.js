@@ -40,6 +40,8 @@ class Renderer extends EventEmitter<RendererEvents> {
   private currentDragVelocity = 0
   private realTimeProgress = 0
   private animationFrameId: number | null = null
+  private isUserInteracting = false
+  private interactionTimeout: number | null = null
 
   constructor(options: WaveSurferOptions, audioElement?: HTMLElement) {
     super()
@@ -96,6 +98,34 @@ class Renderer extends EventEmitter<RendererEvents> {
     this.wrapper.addEventListener('click', (e) => {
       const [x, y] = getClickPosition(e)
       this.emit('click', x, y)
+    })
+
+    // Add mouse down listener to detect start of user interaction
+    this.wrapper.addEventListener('mousedown', () => {
+      this.startUserInteraction()
+    })
+
+    // Add mouse up listener to detect end of user interaction
+    this.wrapper.addEventListener('mouseup', () => {
+      this.endUserInteraction()
+    })
+
+    // Add mouse leave listener to handle when user moves mouse away
+    this.wrapper.addEventListener('mouseleave', () => {
+      this.endUserInteraction()
+    })
+
+    // Add touch event listeners for mobile devices
+    this.wrapper.addEventListener('touchstart', () => {
+      this.startUserInteraction()
+    })
+
+    this.wrapper.addEventListener('touchend', () => {
+      this.endUserInteraction()
+    })
+
+    this.wrapper.addEventListener('touchcancel', () => {
+      this.endUserInteraction()
     })
 
     // Add a double click listener
@@ -163,6 +193,7 @@ class Renderer extends EventEmitter<RendererEvents> {
         // On start drag
         (x) => {
           this.isDragging = true
+          this.startUserInteraction() // Stop smooth scrolling during drag
           const wrapperWidth = this.wrapper.getBoundingClientRect().width
           this.dragRelativeX = Math.max(0, Math.min(1, x / wrapperWidth))
           this.realTimeProgress = this.dragRelativeX
@@ -182,6 +213,7 @@ class Renderer extends EventEmitter<RendererEvents> {
           const relative = Math.max(0, Math.min(1, x / wrapperWidth))
           this.dragRelativeX = null
           this.realTimeProgress = 0
+          this.endUserInteraction() // Re-enable smooth scrolling after drag
           console.log('🎯 RENDERER DRAG END:', {
             x,
             wrapperWidth,
@@ -342,6 +374,13 @@ class Renderer extends EventEmitter<RendererEvents> {
     this.unsubscribeOnScroll?.forEach((unsubscribe) => unsubscribe())
     this.unsubscribeOnScroll = []
     this.stopRealTimeCursorUpdates()
+    
+    // Clean up interaction timeout
+    if (this.interactionTimeout) {
+      clearTimeout(this.interactionTimeout)
+      this.interactionTimeout = null
+    }
+    
     if (this.lenis) {
       this.lenis.destroy()
       this.lenis = null
@@ -424,6 +463,50 @@ class Renderer extends EventEmitter<RendererEvents> {
       // Use the last known real-time progress to maintain cursor position
       // This ensures the cursor stays in the correct position as Lenis animates the scroll
       this.updateCursorPosition(this.realTimeProgress)
+    }
+  }
+
+  private startUserInteraction() {
+    this.isUserInteracting = true
+    
+    // Clear any existing timeout
+    if (this.interactionTimeout) {
+      clearTimeout(this.interactionTimeout)
+    }
+    
+    // Temporarily stop Lenis smooth scrolling for precise positioning
+    if (this.lenis) {
+      this.lenis.stop()
+    }
+  }
+
+  private endUserInteraction() {
+    // Clear any existing timeout
+    if (this.interactionTimeout) {
+      clearTimeout(this.interactionTimeout)
+    }
+    
+    // Delay before re-enabling smooth scrolling to allow for precise positioning
+    this.interactionTimeout = window.setTimeout(() => {
+      this.isUserInteracting = false
+      
+      // Re-enable Lenis smooth scrolling
+      if (this.lenis) {
+        this.lenis.start()
+      }
+    }, 500) // 500ms delay to allow for precise positioning
+  }
+
+  private handlePreciseClick(progress: number) {
+    // For precise positioning, temporarily use instant scroll
+    if (this.isUserInteracting && this.lenis) {
+      const { scrollWidth, clientWidth } = this.scrollContainer
+      const progressWidth = progress * scrollWidth
+      const middle = clientWidth / 2
+      const targetScrollLeft = progressWidth - (this.options.autoCenter ? middle : 0)
+      
+      // Use immediate scroll for precise positioning
+      this.lenis.scrollTo(targetScrollLeft, { immediate: true })
     }
   }
 
@@ -859,6 +942,11 @@ class Renderer extends EventEmitter<RendererEvents> {
   }
 
   private scrollIntoView(progress: number, isPlaying = false) {
+    // Don't auto-scroll if user is actively interacting (for precise positioning)
+    if (this.isUserInteracting && !isPlaying) {
+      return
+    }
+
     // Use Lenis's animatedScroll for perfect synchronization
     const animatedScrollLeft = this.lenis?.animatedScroll || this.scrollContainer.scrollLeft
     const { scrollWidth, clientWidth } = this.scrollContainer

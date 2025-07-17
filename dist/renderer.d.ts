@@ -35,6 +35,8 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private currentDragVelocity;
     private realTimeProgress;
     private animationFrameId;
+    private isUserInteracting;
+    private interactionTimeout;
     constructor(options: WaveSurferOptions, audioElement?: HTMLElement);
     private parentFromOptionsContainer;
     private initEvents;
@@ -55,6 +57,9 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private stopRealTimeCursorUpdates;
     private updateCursorPosition;
     private syncCursorWithScroll;
+    private startUserInteraction;
+    private endUserInteraction;
+    private handlePreciseClick;
     private createDelay;
     private convertColorValues;
     private getPixelRatio;
