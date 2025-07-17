@@ -136,8 +136,8 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
                         velocity: velocity.toFixed(2)
                     });
                     // Use direct relative position for immediate response
-                    // Pass velocity as additional parameter for adaptive scrolling
-                    onDrag(accumulatedDx, dampedDy, currentRelativeX, currentRelativeY, velocity);
+                    // Pass velocity and absolute mouse X position for adaptive scrolling and continuous scroll
+                    onDrag(accumulatedDx, dampedDy, currentRelativeX, currentRelativeY, velocity, currentMouseX);
                     accumulatedDx = 0;
                 }
                 // Update tracking variables

@@ -37,6 +37,9 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private animationFrameId;
     private isUserInteracting;
     private interactionTimeout;
+    private continuousScrollInterval;
+    private continuousScrollDirection;
+    private continuousScrollSpeed;
     constructor(options: WaveSurferOptions, audioElement?: HTMLElement);
     private parentFromOptionsContainer;
     private initEvents;
@@ -60,6 +63,9 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private startUserInteraction;
     private endUserInteraction;
     private handlePreciseClick;
+    private startContinuousScroll;
+    private stopContinuousScroll;
+    private updateContinuousScroll;
     private createDelay;
     private convertColorValues;
     private getPixelRatio;

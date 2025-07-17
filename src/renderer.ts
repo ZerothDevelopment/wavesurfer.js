@@ -42,6 +42,9 @@ class Renderer extends EventEmitter<RendererEvents> {
   private animationFrameId: number | null = null
   private isUserInteracting = false
   private interactionTimeout: number | null = null
+  private continuousScrollInterval: number | null = null
+  private continuousScrollDirection: 'left' | 'right' | null = null
+  private continuousScrollSpeed = 0
 
   constructor(options: WaveSurferOptions, audioElement?: HTMLElement) {
     super()
@@ -171,7 +174,7 @@ class Renderer extends EventEmitter<RendererEvents> {
       makeDraggable(
         this.wrapper,
         // On drag
-        (_, __, x, ___, velocity = 0) => {
+        (_, __, x, ___, velocity = 0, mouseX = 0) => {
           const wrapperWidth = this.wrapper.getBoundingClientRect().width
           const relative = Math.max(0, Math.min(1, x / wrapperWidth))
           this.dragRelativeX = relative
@@ -181,12 +184,17 @@ class Renderer extends EventEmitter<RendererEvents> {
           // Start real-time cursor updates
           this.startRealTimeCursorUpdates()
           
+          // Update continuous scroll based on mouse position
+          this.updateContinuousScroll(mouseX)
+          
           console.log('🎯 RENDERER DRAG:', {
             x,
             wrapperWidth,
             relative,
             velocity: velocity.toFixed(2),
-            scrollLeft: this.scrollContainer.scrollLeft
+            scrollLeft: this.scrollContainer.scrollLeft,
+            mouseX,
+            continuousScrollDirection: this.continuousScrollDirection
           })
           this.emit('drag', relative)
         },
@@ -208,6 +216,7 @@ class Renderer extends EventEmitter<RendererEvents> {
         (x) => {
           this.isDragging = false
           this.stopRealTimeCursorUpdates()
+          this.stopContinuousScroll() // Stop continuous scrolling
           this.currentDragVelocity = 0 // Reset velocity when drag ends
           const wrapperWidth = this.wrapper.getBoundingClientRect().width
           const relative = Math.max(0, Math.min(1, x / wrapperWidth))
@@ -374,6 +383,7 @@ class Renderer extends EventEmitter<RendererEvents> {
     this.unsubscribeOnScroll?.forEach((unsubscribe) => unsubscribe())
     this.unsubscribeOnScroll = []
     this.stopRealTimeCursorUpdates()
+    this.stopContinuousScroll()
     
     // Clean up interaction timeout
     if (this.interactionTimeout) {
@@ -507,6 +517,109 @@ class Renderer extends EventEmitter<RendererEvents> {
       
       // Use immediate scroll for precise positioning
       this.lenis.scrollTo(targetScrollLeft, { immediate: true })
+    }
+  }
+
+  private startContinuousScroll(direction: 'left' | 'right', speed: number) {
+    // Stop any existing continuous scroll
+    this.stopContinuousScroll()
+    
+    this.continuousScrollDirection = direction
+    this.continuousScrollSpeed = speed
+    
+    // Start continuous scrolling with smooth acceleration
+    let currentSpeed = speed * 0.3 // Start at 30% speed
+    const maxSpeed = speed
+    const acceleration = 0.1
+    
+    const scroll = () => {
+      if (!this.isDragging || !this.continuousScrollDirection) {
+        this.stopContinuousScroll()
+        return
+      }
+      
+      // Gradually increase speed up to maximum
+      currentSpeed = Math.min(currentSpeed + acceleration, maxSpeed)
+      
+      // Calculate scroll amount based on direction and speed
+      const scrollAmount = this.continuousScrollDirection === 'right' ? currentSpeed : -currentSpeed
+      
+      // Get current scroll position
+      const currentScrollLeft = this.lenis?.animatedScroll || this.scrollContainer.scrollLeft
+      const newScrollLeft = currentScrollLeft + scrollAmount
+      
+      // Apply bounds checking
+      const maxScrollLeft = this.scrollContainer.scrollWidth - this.scrollContainer.clientWidth
+      const clampedScrollLeft = Math.max(0, Math.min(newScrollLeft, maxScrollLeft))
+      
+      // Use Lenis for smooth continuous scrolling
+      if (this.lenis) {
+        this.lenis.scrollTo(clampedScrollLeft, { 
+          immediate: true, // Immediate for continuous feel
+          force: true // Force scroll even if stopped
+        })
+      } else {
+        this.scrollContainer.scrollLeft = clampedScrollLeft
+      }
+      
+      // Continue scrolling
+      this.continuousScrollInterval = requestAnimationFrame(scroll)
+    }
+    
+    // Start the continuous scroll loop
+    this.continuousScrollInterval = requestAnimationFrame(scroll)
+  }
+
+  private stopContinuousScroll() {
+    if (this.continuousScrollInterval) {
+      cancelAnimationFrame(this.continuousScrollInterval)
+      this.continuousScrollInterval = null
+    }
+    this.continuousScrollDirection = null
+    this.continuousScrollSpeed = 0
+  }
+
+  private updateContinuousScroll(mouseX: number) {
+    if (!this.isDragging) return
+    
+    const containerRect = this.scrollContainer.getBoundingClientRect()
+    const relativeX = mouseX - containerRect.left
+    const containerWidth = containerRect.width
+    
+    // Define edge zones (20% of container width on each side)
+    const edgeZoneWidth = containerWidth * 0.2
+    const leftEdgeZone = edgeZoneWidth
+    const rightEdgeZone = containerWidth - edgeZoneWidth
+    
+    // Calculate if we're in an edge zone and determine scroll speed
+    let shouldScroll = false
+    let direction: 'left' | 'right' | null = null
+    let speed = 0
+    
+    if (relativeX < leftEdgeZone) {
+      // Left edge zone
+      shouldScroll = true
+      direction = 'left'
+      // Speed increases as we get closer to the edge (0 to 1)
+      const edgeProximity = 1 - (relativeX / leftEdgeZone)
+      speed = Math.max(2, edgeProximity * 12) // Speed range: 2-12 pixels per frame
+    } else if (relativeX > rightEdgeZone) {
+      // Right edge zone
+      shouldScroll = true
+      direction = 'right'
+      // Speed increases as we get closer to the edge (0 to 1)
+      const edgeProximity = (relativeX - rightEdgeZone) / edgeZoneWidth
+      speed = Math.max(2, edgeProximity * 12) // Speed range: 2-12 pixels per frame
+    }
+    
+    if (shouldScroll && direction) {
+      // Start or update continuous scroll
+      if (this.continuousScrollDirection !== direction) {
+        this.startContinuousScroll(direction, speed)
+      }
+    } else {
+      // Stop continuous scroll
+      this.stopContinuousScroll()
     }
   }
 

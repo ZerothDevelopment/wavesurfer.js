@@ -1,6 +1,6 @@
 export function makeDraggable(
   element: HTMLElement | null,
-  onDrag: (dx: number, dy: number, x: number, y: number, velocity?: number) => void,
+  onDrag: (dx: number, dy: number, x: number, y: number, velocity?: number, mouseX?: number) => void,
   onStart?: (x: number, y: number) => void,
   onEnd?: (x: number, y: number) => void,
   threshold = 3,
@@ -175,8 +175,8 @@ export function makeDraggable(
             velocity: velocity.toFixed(2)
           })
           // Use direct relative position for immediate response
-          // Pass velocity as additional parameter for adaptive scrolling
-          onDrag(accumulatedDx, dampedDy, currentRelativeX, currentRelativeY, velocity)
+          // Pass velocity and absolute mouse X position for adaptive scrolling and continuous scroll
+          onDrag(accumulatedDx, dampedDy, currentRelativeX, currentRelativeY, velocity, currentMouseX)
           accumulatedDx = 0
         }
 
