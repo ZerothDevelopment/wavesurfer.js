@@ -737,13 +737,8 @@ class Renderer extends EventEmitter<RendererEvents> {
       const maxScrollLeft = scrollWidth - clientWidth
       const idealScrollLeft = Math.max(0, Math.min(maxScrollLeft, progressWidth - middle))
 
-      // Smoothly interpolate towards the ideal position to avoid visible jumps
-      const diff = idealScrollLeft - scrollLeft
-      const smoothingFactor = 0.35 // 0=no smoothing, 1=instant. Adjust for balance.
-
-      if (Math.abs(diff) > 0.5) {
-        this.scrollContainer.scrollLeft += diff * smoothingFactor
-      }
+      // Set scroll position directly so the cursor remains under the mouse with no lag
+      this.scrollContainer.scrollLeft = idealScrollLeft
     } else {
       if (progressWidth < startEdge || progressWidth > endEdge) {
         this.scrollContainer.scrollLeft = progressWidth - (this.options.autoCenter ? middle : 0)
