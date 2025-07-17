@@ -176,12 +176,14 @@ class Renderer extends EventEmitter<RendererEvents> {
     this.subscriptions.push(
       makeDraggable(
         this.wrapper,
-        // On drag
+        // Drag callback: dx, dy are unused here; x is the relative X position within wrapper
         (_, __, x, ___, velocity = 0, mouseX = 0) => {
           const wrapperWidth = this.wrapperRect?.width ?? this.wrapper.getBoundingClientRect().width
           const relative = Math.max(0, Math.min(1, x / wrapperWidth))
           this.dragRelativeX = relative
           this.realTimeProgress = relative
+          // Immediate cursor update to avoid a one-frame delay caused by the RAF loop
+          this.updateCursorPosition(relative)
           
           // Start real-time cursor updates
           this.startRealTimeCursorUpdates()
