@@ -732,28 +732,10 @@ class Renderer extends EventEmitter<RendererEvents> {
     const middle = clientWidth / 2
 
     if (this.isDragging) {
-      // Smooth continuous scrolling that follows the cursor
-      const bufferZone = 120 // Keep cursor away from edges by this amount
-      const targetScrollLeft = progressWidth - bufferZone
+      // Keep the cursor roughly centered while dragging, except at the very edges
       const maxScrollLeft = scrollWidth - clientWidth
-      
-      // Calculate the ideal scroll position to keep cursor in buffer zone
-      let idealScrollLeft = Math.max(0, Math.min(maxScrollLeft, targetScrollLeft))
-      
-      // If we're near the right edge, maintain right buffer
-      if (progressWidth > endEdge - bufferZone) {
-        idealScrollLeft = Math.max(0, Math.min(maxScrollLeft, progressWidth - clientWidth + bufferZone))
-      }
-      
-      // Smooth interpolation towards ideal position
-      const scrollDiff = idealScrollLeft - scrollLeft
-      const smoothingFactor = 0.15 // Adjust for smoothness (0.1 = very smooth, 0.3 = more responsive)
-      
-      // Only scroll if there's a meaningful difference
-      if (Math.abs(scrollDiff) > 1) {
-        const newScrollLeft = scrollLeft + (scrollDiff * smoothingFactor)
-        this.scrollContainer.scrollLeft = Math.max(0, Math.min(maxScrollLeft, newScrollLeft))
-      }
+      const idealScrollLeft = Math.max(0, Math.min(maxScrollLeft, progressWidth - middle))
+      this.scrollContainer.scrollLeft = idealScrollLeft
     } else {
       if (progressWidth < startEdge || progressWidth > endEdge) {
         this.scrollContainer.scrollLeft = progressWidth - (this.options.autoCenter ? middle : 0)

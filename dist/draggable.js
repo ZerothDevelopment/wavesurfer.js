@@ -35,7 +35,7 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
         const DRAG_DAMPING = 0.98; // Minimal damping for maximum responsiveness
         const MIN_DRAG_INTERVAL = 8; // 120fps - balanced for smooth performance
         const MIN_MOVEMENT_THRESHOLD = 0.05; // Very responsive threshold
-        const SCROLL_COMPENSATION_FACTOR = 0.8; // Partial compensation to work with smooth scrolling
+        const SCROLL_COMPENSATION_FACTOR = 1; // Fully compensate for container scroll, keeping pointer aligned
         const onPointerMove = (event) => {
             event.preventDefault();
             event.stopPropagation();
