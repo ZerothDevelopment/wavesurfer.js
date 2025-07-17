@@ -42,8 +42,9 @@ class Renderer extends EventEmitter<RendererEvents> {
   private interactionTimeout: number | null = null
   private continuousScrollInterval: number | null = null
   private continuousScrollDirection: 'left' | 'right' | null = null
-  // Memoized device pixel ratio to avoid repeated look-ups
-  private readonly pixelRatio: number = Math.max(1, window.devicePixelRatio || 1)
+
+  // Stores the pointer's X position during drag so we can recompute progress when auto-scroll moves the waveform
+  private lastDragMouseX: number | null = null
 
   // Cache last cursor progress to skip redundant DOM writes
   private lastCursorProgress: number = -1
@@ -182,7 +183,10 @@ class Renderer extends EventEmitter<RendererEvents> {
           const relative = Math.max(0, Math.min(1, x / wrapperWidth))
           this.dragRelativeX = relative
           this.realTimeProgress = relative
-          // Immediate cursor update to avoid a one-frame delay caused by the RAF loop
+          // Store mouse position for later recalculations during auto-scroll
+          this.lastDragMouseX = mouseX
+
+          // Immediate cursor update to avoid a one-frame delay
           this.updateCursorPosition(relative)
           
           // Start real-time cursor updates
@@ -216,6 +220,7 @@ class Renderer extends EventEmitter<RendererEvents> {
           this.dragRelativeX = null
           this.realTimeProgress = 0
           this.wrapperRect = null
+          this.lastDragMouseX = null
           this.endUserInteraction() // Re-enable smooth scrolling after drag
           this.emit('dragend', relative)
         },
@@ -521,6 +526,16 @@ class Renderer extends EventEmitter<RendererEvents> {
       } else {
         this.scrollContainer.scrollLeft = clampedScrollLeft
       }
+
+      // Recompute progress based on current mouse position to keep cursor aligned
+      if (this.lastDragMouseX !== null) {
+        const wrapperRect = this.wrapper.getBoundingClientRect()
+        const wrapperWidth = wrapperRect.width
+        const newRelative = this.clamp((this.lastDragMouseX - wrapperRect.left) / wrapperWidth, 0, 1)
+        this.dragRelativeX = newRelative
+        this.realTimeProgress = newRelative
+        this.updateCursorPosition(newRelative)
+      }
       
       this.continuousScrollInterval = requestAnimationFrame(scroll)
     }
@@ -646,7 +661,7 @@ class Renderer extends EventEmitter<RendererEvents> {
   }
 
   private getPixelRatio() {
-    return this.pixelRatio
+    return Math.max(1, window.devicePixelRatio || 1)
   }
 
   // Simple clamp helper
@@ -1137,8 +1152,8 @@ class Renderer extends EventEmitter<RendererEvents> {
 
   // Helper that computes bar metrics taking pixelRatio into account
   private getBarDimensions(options: WaveSurferOptions) {
-    const barWidth = options.barWidth ? options.barWidth * this.pixelRatio : 1
-    const barGap = options.barGap ? options.barGap * this.pixelRatio : options.barWidth ? barWidth / 2 : 0
+    const barWidth = options.barWidth ? options.barWidth * this.getPixelRatio() : 1
+    const barGap = options.barGap ? options.barGap * this.getPixelRatio() : options.barWidth ? barWidth / 2 : 0
     const barRadius = options.barRadius || 0
     return { barWidth, barGap, barRadius }
   }

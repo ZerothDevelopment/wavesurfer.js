@@ -37,7 +37,7 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private interactionTimeout;
     private continuousScrollInterval;
     private continuousScrollDirection;
-    private readonly pixelRatio;
+    private lastDragMouseX;
     private lastCursorProgress;
     private wrapperRect;
     private lastLenisHash;
