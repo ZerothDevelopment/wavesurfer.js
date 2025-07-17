@@ -26,12 +26,12 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private audioData;
     private resizeObserver;
     private lastContainerWidth;
-    private isDragging;
     private dragRelativeX;
     private subscriptions;
     private unsubscribeOnScroll;
-    private autoScrollInterval;
-    private lastScrollAdjustment;
+    private lenis;
+    private isDragging;
+    private dragStartX;
     private currentDragVelocity;
     constructor(options: WaveSurferOptions, audioElement?: HTMLElement);
     private parentFromOptionsContainer;
@@ -48,8 +48,7 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     setScroll(pixels: number): void;
     setScrollPercentage(percent: number): void;
     destroy(): void;
-    private startContinuousScroll;
-    private stopContinuousScroll;
+    private initLenis;
     private createDelay;
     private convertColorValues;
     private getPixelRatio;

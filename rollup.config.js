@@ -18,6 +18,7 @@ export default [
       file: 'dist/wavesurfer.esm.js',
       format: 'esm',
     },
+    external: ['lenis'],
     plugins,
   },
   // CommonJS module (Node.js)
@@ -28,6 +29,7 @@ export default [
       format: 'cjs',
       exports: 'default',
     },
+    external: ['lenis'],
     plugins,
   },
   // UMD (browser script tag)
@@ -38,7 +40,11 @@ export default [
       file: 'dist/wavesurfer.min.js',
       format: 'umd',
       exports: 'default',
+      globals: {
+        'lenis': 'Lenis'
+      },
     },
+    external: ['lenis'],
     plugins,
   },
 
@@ -61,6 +67,7 @@ export default [
           file: plugin.replace('src/', 'dist/').replace('.ts', '.js'),
           format: 'esm',
         },
+        external: ['lenis'],
         plugins,
       },
       // ES module again but with an .esm.js extension
@@ -70,6 +77,7 @@ export default [
           file: plugin.replace('src/', 'dist/').replace('.ts', '.esm.js'),
           format: 'esm',
         },
+        external: ['lenis'],
         plugins,
       },
       // CommonJS module (Node.js)
@@ -81,6 +89,7 @@ export default [
           format: 'cjs',
           exports: 'default',
         },
+        external: ['lenis'],
         plugins,
       },
       // UMD (browser script tag)
@@ -96,10 +105,11 @@ export default [
           extend: true,
           globals: {
             WaveSurfer: 'WaveSurfer',
+            'lenis': 'Lenis'
           },
           exports: 'default',
         },
-        external: ['WaveSurfer'],
+        external: ['WaveSurfer', 'lenis'],
         plugins,
       },
     ])
