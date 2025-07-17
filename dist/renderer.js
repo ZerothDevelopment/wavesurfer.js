@@ -193,7 +193,7 @@ class Renderer extends EventEmitter {
           overflow-y: hidden;
           width: 100%;
           position: relative;
-          scroll-behavior: smooth; /* Enable smooth scrolling animations */
+          scroll-behavior: auto; /* Disable smooth scrolling for instant response during drag */
         }
         :host .noScrollbar {
           scrollbar-color: transparent;
@@ -329,7 +329,7 @@ class Renderer extends EventEmitter {
                 // Hit the edge, stop continuous scroll
                 this.stopContinuousScroll();
             }
-        }, 8); // ~120fps for smoother scrolling and reduced cursor lag
+        }, 4); // ~240fps for ultra-smooth scrolling and minimal cursor lag
     }
     stopContinuousScroll() {
         if (this.autoScrollInterval) {
@@ -683,27 +683,29 @@ class Renderer extends EventEmitter {
         const endEdge = scrollLeft + clientWidth;
         const middle = clientWidth / 2;
         if (this.isDragging) {
-            // During dragging, use adaptive auto-scroll based on cursor position, speed, and velocity
-            const EDGE_BUFFER = 50; // Start auto-scroll when within 50px of edge
-            const BASE_MIN_SCROLL_SPEED = 5; // Base minimum scroll speed
-            const BASE_MAX_SCROLL_SPEED = 40; // Base maximum scroll speed
-            // Velocity-based speed multiplier (higher velocity = faster scroll)
-            const velocityMultiplier = Math.min(3, 1 + (this.currentDragVelocity * 0.1));
+            // During dragging, use aggressive auto-scroll that scales with velocity
+            const EDGE_BUFFER = 80; // Larger buffer for earlier scroll activation
+            const BASE_MIN_SCROLL_SPEED = 15; // Increased base minimum speed
+            const BASE_MAX_SCROLL_SPEED = 120; // Significantly increased maximum speed
+            // More aggressive velocity-based speed multiplier
+            const velocityMultiplier = Math.min(8, 1 + (this.currentDragVelocity * 0.3));
             const MIN_SCROLL_SPEED = BASE_MIN_SCROLL_SPEED * velocityMultiplier;
             const MAX_SCROLL_SPEED = BASE_MAX_SCROLL_SPEED * velocityMultiplier;
             const leftBuffer = startEdge + EDGE_BUFFER;
             const rightBuffer = endEdge - EDGE_BUFFER;
             let scrollAdjustment = 0;
             if (progressWidth < leftBuffer) {
-                // Scroll left - speed increases as cursor gets closer to edge
+                // Scroll left - exponential speed increase as cursor approaches edge
                 const distanceFromEdge = Math.max(1, progressWidth - startEdge);
-                const speedMultiplier = Math.max(1, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER * 4);
+                const edgeRatio = Math.max(0, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER);
+                const speedMultiplier = 1 + (edgeRatio * edgeRatio * 6); // Exponential curve
                 scrollAdjustment = -Math.min(MAX_SCROLL_SPEED, MIN_SCROLL_SPEED * speedMultiplier);
             }
             else if (progressWidth > rightBuffer) {
-                // Scroll right - speed increases as cursor gets closer to edge
+                // Scroll right - exponential speed increase as cursor approaches edge
                 const distanceFromEdge = Math.max(1, endEdge - progressWidth);
-                const speedMultiplier = Math.max(1, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER * 4);
+                const edgeRatio = Math.max(0, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER);
+                const speedMultiplier = 1 + (edgeRatio * edgeRatio * 6); // Exponential curve
                 scrollAdjustment = Math.min(MAX_SCROLL_SPEED, MIN_SCROLL_SPEED * speedMultiplier);
             }
             // Store the scroll adjustment for continuous scrolling
