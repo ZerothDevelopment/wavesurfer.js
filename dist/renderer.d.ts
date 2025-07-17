@@ -33,6 +33,8 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private isDragging;
     private dragStartX;
     private currentDragVelocity;
+    private realTimeProgress;
+    private animationFrameId;
     constructor(options: WaveSurferOptions, audioElement?: HTMLElement);
     private parentFromOptionsContainer;
     private initEvents;
@@ -49,6 +51,9 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     setScrollPercentage(percent: number): void;
     destroy(): void;
     private initLenis;
+    private startRealTimeCursorUpdates;
+    private stopRealTimeCursorUpdates;
+    private updateCursorPosition;
     private createDelay;
     private convertColorValues;
     private getPixelRatio;

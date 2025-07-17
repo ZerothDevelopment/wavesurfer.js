@@ -37,6 +37,8 @@ class Renderer extends EventEmitter {
         this.isDragging = false;
         this.dragStartX = 0;
         this.currentDragVelocity = 0;
+        this.realTimeProgress = 0;
+        this.animationFrameId = null;
         this.subscriptions = [];
         this.options = options;
         const parent = this.parentFromOptionsContainer(options.container);
@@ -124,6 +126,9 @@ class Renderer extends EventEmitter {
             const relative = Math.max(0, Math.min(1, x / wrapperWidth));
             this.dragRelativeX = relative;
             this.currentDragVelocity = velocity;
+            this.realTimeProgress = relative;
+            // Start real-time cursor updates
+            this.startRealTimeCursorUpdates();
             console.log('🎯 RENDERER DRAG:', {
                 x,
                 wrapperWidth,
@@ -138,6 +143,7 @@ class Renderer extends EventEmitter {
             this.isDragging = true;
             const wrapperWidth = this.wrapper.getBoundingClientRect().width;
             this.dragRelativeX = Math.max(0, Math.min(1, x / wrapperWidth));
+            this.realTimeProgress = this.dragRelativeX;
             console.log('🎯 RENDERER DRAG START:', {
                 x,
                 wrapperWidth,
@@ -148,10 +154,12 @@ class Renderer extends EventEmitter {
         // On end drag
         (x) => {
             this.isDragging = false;
+            this.stopRealTimeCursorUpdates();
             this.currentDragVelocity = 0; // Reset velocity when drag ends
             const wrapperWidth = this.wrapper.getBoundingClientRect().width;
             const relative = Math.max(0, Math.min(1, x / wrapperWidth));
             this.dragRelativeX = null;
+            this.realTimeProgress = 0;
             console.log('🎯 RENDERER DRAG END:', {
                 x,
                 wrapperWidth,
@@ -294,6 +302,7 @@ class Renderer extends EventEmitter {
         (_a = this.resizeObserver) === null || _a === void 0 ? void 0 : _a.disconnect();
         (_b = this.unsubscribeOnScroll) === null || _b === void 0 ? void 0 : _b.forEach((unsubscribe) => unsubscribe());
         this.unsubscribeOnScroll = [];
+        this.stopRealTimeCursorUpdates();
         if (this.lenis) {
             this.lenis.destroy();
             this.lenis = null;
@@ -306,10 +315,10 @@ class Renderer extends EventEmitter {
         this.lenis = new Lenis({
             wrapper: this.scrollContainer,
             content: this.wrapper,
-            lerp: 0.08,
+            lerp: 0.05, // Slower for smoother experience
             smoothWheel: true,
-            wheelMultiplier: 1.2,
-            touchMultiplier: 1.5,
+            wheelMultiplier: 0.8, // Reduced for slower scrolling
+            touchMultiplier: 1.0, // Reduced for slower touch scrolling
             autoRaf: true,
             orientation: 'horizontal'
         });
@@ -320,6 +329,35 @@ class Renderer extends EventEmitter {
             const endX = (scrollLeft + clientWidth) / scrollWidth;
             this.emit('scroll', startX, endX, scrollLeft, scrollLeft + clientWidth);
         });
+    }
+    startRealTimeCursorUpdates() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+        }
+        const updateCursor = () => {
+            if (this.isDragging && this.realTimeProgress !== null) {
+                // Update cursor position in real-time during drag
+                this.updateCursorPosition(this.realTimeProgress);
+                this.animationFrameId = requestAnimationFrame(updateCursor);
+            }
+            else {
+                this.animationFrameId = null;
+            }
+        };
+        this.animationFrameId = requestAnimationFrame(updateCursor);
+    }
+    stopRealTimeCursorUpdates() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+    }
+    updateCursorPosition(progress) {
+        if (isNaN(progress))
+            return;
+        const percents = progress * 100;
+        this.cursor.style.left = `${percents}%`;
+        this.cursor.style.transform = `translateX(-${Math.round(percents) === 100 ? this.options.cursorWidth : 0}px)`;
     }
     createDelay(delayMs = 10) {
         let timeout;
@@ -678,8 +716,8 @@ class Renderer extends EventEmitter {
                 // Use Lenis scrollTo for smooth velocity-aware scrolling
                 if (this.lenis) {
                     this.lenis.scrollTo(targetScrollLeft, {
-                        lerp: 0.12, // Faster lerp for drag responsiveness
-                        duration: 0.3,
+                        lerp: 0.08, // Slower lerp for smoother drag experience
+                        duration: 0.4,
                         immediate: false
                     });
                 }
@@ -691,8 +729,8 @@ class Renderer extends EventEmitter {
                 const targetScrollLeft = progressWidth - (this.options.autoCenter ? middle : 0);
                 if (this.lenis) {
                     this.lenis.scrollTo(targetScrollLeft, {
-                        lerp: 0.08,
-                        duration: 0.5,
+                        lerp: 0.06, // Slower for normal scrolling
+                        duration: 0.6,
                         immediate: false
                     });
                 }
@@ -719,8 +757,10 @@ class Renderer extends EventEmitter {
         const percents = progress * 100;
         this.canvasWrapper.style.clipPath = `polygon(${percents}% 0%, 100% 0%, 100% 100%, ${percents}% 100%)`;
         this.progressWrapper.style.width = `${percents}%`;
-        this.cursor.style.left = `${percents}%`;
-        this.cursor.style.transform = `translateX(-${Math.round(percents) === 100 ? this.options.cursorWidth : 0}px)`;
+        // Only update cursor position if not dragging (real-time updates handle it during drag)
+        if (!this.isDragging) {
+            this.updateCursorPosition(progress);
+        }
         if (this.isScrollable && this.options.autoScroll) {
             this.scrollIntoView(progress, isPlaying);
         }
