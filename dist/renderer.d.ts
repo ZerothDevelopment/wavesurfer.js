@@ -32,6 +32,7 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private unsubscribeOnScroll;
     private autoScrollInterval;
     private lastScrollAdjustment;
+    private currentDragVelocity;
     constructor(options: WaveSurferOptions, audioElement?: HTMLElement);
     private parentFromOptionsContainer;
     private initEvents;

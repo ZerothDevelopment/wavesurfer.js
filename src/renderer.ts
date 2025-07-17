@@ -35,6 +35,7 @@ class Renderer extends EventEmitter<RendererEvents> {
   private unsubscribeOnScroll: (() => void)[] = []
   private autoScrollInterval: number | null = null
   private lastScrollAdjustment = 0
+  private currentDragVelocity = 0
 
   constructor(options: WaveSurferOptions, audioElement?: HTMLElement) {
     super()
@@ -135,14 +136,16 @@ class Renderer extends EventEmitter<RendererEvents> {
       makeDraggable(
         this.wrapper,
         // On drag
-        (_, __, x) => {
+        (_, __, x, ___, velocity = 0) => {
           const wrapperWidth = this.wrapper.getBoundingClientRect().width
           const relative = Math.max(0, Math.min(1, x / wrapperWidth))
           this.dragRelativeX = relative
+          this.currentDragVelocity = velocity
           console.log('🎯 RENDERER DRAG:', {
             x,
             wrapperWidth,
             relative,
+            velocity: velocity.toFixed(2),
             scrollLeft: this.scrollContainer.scrollLeft
           })
           this.emit('drag', relative)
@@ -163,6 +166,7 @@ class Renderer extends EventEmitter<RendererEvents> {
         (x) => {
           this.isDragging = false
           this.stopContinuousScroll()
+          this.currentDragVelocity = 0 // Reset velocity when drag ends
           const wrapperWidth = this.wrapper.getBoundingClientRect().width
           const relative = Math.max(0, Math.min(1, x / wrapperWidth))
           this.dragRelativeX = null
@@ -343,11 +347,26 @@ class Renderer extends EventEmitter<RendererEvents> {
       
       if (newScrollLeft !== scrollLeft) {
         this.scrollContainer.scrollLeft = newScrollLeft
-        console.log('🔄 CONTINUOUS AUTO-SCROLL:', {
-          scrollLeft,
-          newScrollLeft,
-          scrollAdjustment: this.lastScrollAdjustment
-        })
+        
+        // Real-time cursor update during continuous scroll
+        if (this.dragRelativeX !== null) {
+          // Recalculate and emit the drag position to keep cursor in sync
+          const progressWidth = this.dragRelativeX * scrollWidth
+          const newProgress = progressWidth / scrollWidth
+          
+          console.log('🔄 CONTINUOUS AUTO-SCROLL + CURSOR UPDATE:', {
+            scrollLeft,
+            newScrollLeft,
+            scrollAdjustment: this.lastScrollAdjustment,
+            dragRelativeX: this.dragRelativeX,
+            progressWidth,
+            newProgress,
+            velocity: this.currentDragVelocity.toFixed(2)
+          })
+          
+          // Emit updated drag position for real-time cursor updates
+          this.emit('drag', this.dragRelativeX)
+        }
       } else {
         // Hit the edge, stop continuous scroll
         this.stopContinuousScroll()
@@ -797,10 +816,16 @@ class Renderer extends EventEmitter<RendererEvents> {
     const middle = clientWidth / 2
 
     if (this.isDragging) {
-      // During dragging, use adaptive auto-scroll based on cursor position and speed
+      // During dragging, use adaptive auto-scroll based on cursor position, speed, and velocity
       const EDGE_BUFFER = 50 // Start auto-scroll when within 50px of edge
-      const MIN_SCROLL_SPEED = 5 // Increased minimum scroll speed
-      const MAX_SCROLL_SPEED = 40 // Increased maximum scroll speed for faster response
+      const BASE_MIN_SCROLL_SPEED = 5 // Base minimum scroll speed
+      const BASE_MAX_SCROLL_SPEED = 40 // Base maximum scroll speed
+      
+      // Velocity-based speed multiplier (higher velocity = faster scroll)
+      const velocityMultiplier = Math.min(3, 1 + (this.currentDragVelocity * 0.1))
+      const MIN_SCROLL_SPEED = BASE_MIN_SCROLL_SPEED * velocityMultiplier
+      const MAX_SCROLL_SPEED = BASE_MAX_SCROLL_SPEED * velocityMultiplier
+      
       const leftBuffer = startEdge + EDGE_BUFFER
       const rightBuffer = endEdge - EDGE_BUFFER
       
@@ -809,12 +834,12 @@ class Renderer extends EventEmitter<RendererEvents> {
       if (progressWidth < leftBuffer) {
         // Scroll left - speed increases as cursor gets closer to edge
         const distanceFromEdge = Math.max(1, progressWidth - startEdge)
-        const speedMultiplier = Math.max(1, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER * 4) // Increased multiplier
+        const speedMultiplier = Math.max(1, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER * 4)
         scrollAdjustment = -Math.min(MAX_SCROLL_SPEED, MIN_SCROLL_SPEED * speedMultiplier)
       } else if (progressWidth > rightBuffer) {
         // Scroll right - speed increases as cursor gets closer to edge
         const distanceFromEdge = Math.max(1, endEdge - progressWidth)
-        const speedMultiplier = Math.max(1, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER * 4) // Increased multiplier
+        const speedMultiplier = Math.max(1, (EDGE_BUFFER - distanceFromEdge) / EDGE_BUFFER * 4)
         scrollAdjustment = Math.min(MAX_SCROLL_SPEED, MIN_SCROLL_SPEED * speedMultiplier)
       }
       
@@ -844,7 +869,11 @@ class Renderer extends EventEmitter<RendererEvents> {
           scrollAdjustment,
           scrollDelta: newScrollLeft - prevScrollLeft,
           distanceFromEdge: progressWidth < leftBuffer ? progressWidth - startEdge : endEdge - progressWidth,
-          dragRelativeX: this.dragRelativeX
+          dragRelativeX: this.dragRelativeX,
+          velocity: this.currentDragVelocity.toFixed(2),
+          velocityMultiplier: velocityMultiplier.toFixed(2),
+          finalMinSpeed: MIN_SCROLL_SPEED.toFixed(2),
+          finalMaxSpeed: MAX_SCROLL_SPEED.toFixed(2)
         })
       } else {
         // Stop continuous scroll when not needed

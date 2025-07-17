@@ -34,10 +34,40 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
         let lastMouseY = initialMouseY;
         let accumulatedDx = 0;
         let lastScrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
+        // Velocity tracking for adaptive scrolling
+        let velocityHistory = [];
+        let currentVelocity = 0;
+        let animationFrameId = null;
         // Optimized for smooth continuous scrolling
         const DRAG_DAMPING = 0.98; // Minimal damping for maximum responsiveness
         const MIN_DRAG_INTERVAL = 4; // 240fps - increased frequency for smoother auto-scroll response
         const MIN_MOVEMENT_THRESHOLD = 0.01; // More responsive threshold for rapid scrolling
+        const VELOCITY_SAMPLES = 5; // Number of velocity samples to average
+        const VELOCITY_DECAY = 0.95; // How quickly velocity decays when not moving
+        // Calculate current drag velocity (pixels per millisecond)
+        const calculateVelocity = (dx, dt) => {
+            const currentTime = Date.now();
+            // Add current sample to history
+            velocityHistory.push({ dx, dt, time: currentTime });
+            // Keep only recent samples
+            if (velocityHistory.length > VELOCITY_SAMPLES) {
+                velocityHistory.shift();
+            }
+            // Calculate average velocity from recent samples
+            if (velocityHistory.length > 1) {
+                const totalDx = velocityHistory.reduce((sum, sample) => sum + sample.dx, 0);
+                const totalDt = velocityHistory.reduce((sum, sample) => sum + sample.dt, 0);
+                currentVelocity = totalDt > 0 ? Math.abs(totalDx / totalDt) : 0;
+            }
+            return currentVelocity;
+        };
+        // Use requestAnimationFrame for smooth position updates
+        const updatePositionWithRAF = (callback) => {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            animationFrameId = requestAnimationFrame(callback);
+        };
         const onPointerMove = (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -53,78 +83,95 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
             // Calculate movement from last position
             const rawDx = currentMouseX - lastMouseX;
             const rawDy = currentMouseY - lastMouseY;
+            // Calculate velocity for adaptive scrolling
+            const velocity = calculateVelocity(rawDx, timeDelta);
             // Check if we should start dragging
             const totalDx = currentMouseX - initialMouseX;
             const totalDy = currentMouseY - initialMouseY;
             if (isDragging || Math.abs(totalDx) > threshold || Math.abs(totalDy) > threshold) {
-                // Get current element position
-                const currentRect = element.getBoundingClientRect();
-                const { left, top, width } = currentRect;
-                // Calculate position relative to the initial element position
-                // This maintains consistency regardless of scroll changes
-                const elementPositionDelta = left - initialElementLeft;
-                const adjustedRelativeX = (currentMouseX - initialElementLeft) - elementPositionDelta;
-                const adjustedRelativeY = (currentMouseY - initialElementTop) - elementPositionDelta;
-                // Also calculate the traditional relative position for comparison
-                const currentRelativeX = currentMouseX - left;
-                const currentRelativeY = currentMouseY - top;
-                if (!isDragging) {
-                    console.log('🎯 DRAG START:', {
-                        initialMouseX, initialMouseY,
-                        initialRelativeX, initialRelativeY,
-                        elementRect: { left, top, width },
-                        initialElementLeft, initialElementTop
-                    });
-                    onStart === null || onStart === void 0 ? void 0 : onStart(initialRelativeX, initialRelativeY);
-                    isDragging = true;
-                }
-                // DEBUG: Log key values during drag
-                console.log('📊 POSITION TRACKING:', {
-                    currentMouseX,
-                    elementLeft: left,
-                    initialElementLeft,
-                    elementPositionDelta,
-                    currentRelativeX,
-                    adjustedRelativeX,
-                    rawDx
-                });
-                // Minimal edge effects since smooth scrolling handles positioning
-                let edgeDamping = 1.0;
-                const distanceFromLeftEdge = currentRelativeX;
-                const distanceFromRightEdge = width - currentRelativeX;
-                const minDistanceFromEdge = Math.min(distanceFromLeftEdge, distanceFromRightEdge);
-                // Very light edge damping only for extreme edges
-                if (minDistanceFromEdge < 20) {
-                    const edgeRatio = minDistanceFromEdge / 20;
-                    edgeDamping = Math.max(0.9, edgeRatio);
-                }
-                // Use raw movement for maximum responsiveness
-                const dampedDx = rawDx * DRAG_DAMPING * edgeDamping;
-                const dampedDy = rawDy * DRAG_DAMPING * edgeDamping;
-                // Accumulate movements
-                accumulatedDx += dampedDx;
-                // Very responsive threshold
-                if (Math.abs(accumulatedDx) > MIN_MOVEMENT_THRESHOLD) {
-                    console.log('🎮 DRAG MOVE:', {
-                        accumulatedDx,
-                        dampedDy,
+                // Use requestAnimationFrame for smooth position calculations
+                updatePositionWithRAF(() => {
+                    // Get current element position
+                    const currentRect = element.getBoundingClientRect();
+                    const { left, top, width } = currentRect;
+                    // Calculate position relative to the initial element position
+                    // This maintains consistency regardless of scroll changes
+                    const elementPositionDelta = left - initialElementLeft;
+                    const adjustedRelativeX = (currentMouseX - initialElementLeft) - elementPositionDelta;
+                    const adjustedRelativeY = (currentMouseY - initialElementTop) - elementPositionDelta;
+                    // Also calculate the traditional relative position for comparison
+                    const currentRelativeX = currentMouseX - left;
+                    const currentRelativeY = currentMouseY - top;
+                    if (!isDragging) {
+                        console.log('🎯 DRAG START:', {
+                            initialMouseX, initialMouseY,
+                            initialRelativeX, initialRelativeY,
+                            elementRect: { left, top, width },
+                            initialElementLeft, initialElementTop
+                        });
+                        onStart === null || onStart === void 0 ? void 0 : onStart(initialRelativeX, initialRelativeY);
+                        isDragging = true;
+                    }
+                    // DEBUG: Log key values during drag including velocity
+                    console.log('📊 POSITION TRACKING:', {
+                        currentMouseX,
+                        elementLeft: left,
+                        initialElementLeft,
+                        elementPositionDelta,
                         currentRelativeX,
                         adjustedRelativeX,
                         rawDx,
-                        dampedDx,
-                        elementPositionDelta
+                        velocity: velocity.toFixed(2),
+                        timeDelta
                     });
-                    // Use the adjusted relative position for more consistent behavior
-                    onDrag(accumulatedDx, dampedDy, adjustedRelativeX, adjustedRelativeY);
-                    accumulatedDx = 0;
-                }
+                    // Minimal edge effects since smooth scrolling handles positioning
+                    let edgeDamping = 1.0;
+                    const distanceFromLeftEdge = currentRelativeX;
+                    const distanceFromRightEdge = width - currentRelativeX;
+                    const minDistanceFromEdge = Math.min(distanceFromLeftEdge, distanceFromRightEdge);
+                    // Very light edge damping only for extreme edges
+                    if (minDistanceFromEdge < 20) {
+                        const edgeRatio = minDistanceFromEdge / 20;
+                        edgeDamping = Math.max(0.9, edgeRatio);
+                    }
+                    // Use raw movement for maximum responsiveness
+                    const dampedDx = rawDx * DRAG_DAMPING * edgeDamping;
+                    const dampedDy = rawDy * DRAG_DAMPING * edgeDamping;
+                    // Accumulate movements
+                    accumulatedDx += dampedDx;
+                    // Very responsive threshold
+                    if (Math.abs(accumulatedDx) > MIN_MOVEMENT_THRESHOLD) {
+                        console.log('🎮 DRAG MOVE:', {
+                            accumulatedDx,
+                            dampedDy,
+                            currentRelativeX,
+                            adjustedRelativeX,
+                            rawDx,
+                            dampedDx,
+                            elementPositionDelta,
+                            velocity: velocity.toFixed(2)
+                        });
+                        // Use the adjusted relative position for more consistent behavior
+                        // Pass velocity as additional parameter for adaptive scrolling
+                        onDrag(accumulatedDx, dampedDy, adjustedRelativeX, adjustedRelativeY, velocity);
+                        accumulatedDx = 0;
+                    }
+                });
                 // Update tracking variables
                 lastDragTime = currentTime;
                 lastMouseX = currentMouseX;
                 lastMouseY = currentMouseY;
             }
+            else {
+                // Decay velocity when not actively dragging
+                currentVelocity *= VELOCITY_DECAY;
+            }
         };
         const onPointerUp = (event) => {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
             if (isDragging) {
                 const currentRect = element.getBoundingClientRect();
                 const { left, top } = currentRect;
