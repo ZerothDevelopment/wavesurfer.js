@@ -26,6 +26,10 @@ export function makeDraggable(
     const initialRelativeX = initialMouseX - initialRect.left
     const initialRelativeY = initialMouseY - initialRect.top
     
+    // Store initial element position for consistent calculation
+    const initialElementLeft = initialRect.left
+    const initialElementTop = initialRect.top
+    
     // Find the scroll container (look for parent with scrollable overflow)
     let scrollContainer: HTMLElement | null = element.parentElement
     while (scrollContainer && scrollContainer !== document.body) {
@@ -80,22 +84,37 @@ export function makeDraggable(
         const currentRect = element.getBoundingClientRect()
         const { left, top, width } = currentRect
         
-        // Track scroll changes with partial compensation for smooth scrolling
-        let scrollDelta = 0
-        if (scrollContainer) {
-          const currentScrollLeft = scrollContainer.scrollLeft
-          scrollDelta = currentScrollLeft - lastScrollLeft
-          lastScrollLeft = currentScrollLeft
-        }
+        // Calculate position relative to the initial element position
+        // This maintains consistency regardless of scroll changes
+        const elementPositionDelta = left - initialElementLeft
+        const adjustedRelativeX = (currentMouseX - initialElementLeft) - elementPositionDelta
+        const adjustedRelativeY = (currentMouseY - initialElementTop) - elementPositionDelta
         
-        // Calculate current mouse position relative to element
+        // Also calculate the traditional relative position for comparison
         const currentRelativeX = currentMouseX - left
         const currentRelativeY = currentMouseY - top
 
         if (!isDragging) {
+          console.log('🎯 DRAG START:', {
+            initialMouseX, initialMouseY,
+            initialRelativeX, initialRelativeY,
+            elementRect: { left, top, width },
+            initialElementLeft, initialElementTop
+          })
           onStart?.(initialRelativeX, initialRelativeY)
           isDragging = true
         }
+
+        // DEBUG: Log key values during drag
+        console.log('📊 POSITION TRACKING:', {
+          currentMouseX,
+          elementLeft: left,
+          initialElementLeft,
+          elementPositionDelta,
+          currentRelativeX,
+          adjustedRelativeX,
+          rawDx
+        })
 
         // Minimal edge effects since smooth scrolling handles positioning
         let edgeDamping = 1.0
@@ -109,15 +128,8 @@ export function makeDraggable(
           edgeDamping = Math.max(0.9, edgeRatio)
         }
         
-        // Partial scroll compensation for smooth scrolling system
-        let compensatedDx = rawDx
-        if (Math.abs(scrollDelta) > 0.5) {
-          // Reduced compensation to prevent cursor jumping
-          compensatedDx = rawDx - (scrollDelta * 0.5)
-        }
-        
-        // Minimal damping for maximum responsiveness
-        const dampedDx = compensatedDx * DRAG_DAMPING * edgeDamping
+        // Use raw movement for maximum responsiveness
+        const dampedDx = rawDx * DRAG_DAMPING * edgeDamping
         const dampedDy = rawDy * DRAG_DAMPING * edgeDamping
         
         // Accumulate movements
@@ -125,7 +137,17 @@ export function makeDraggable(
         
         // Very responsive threshold
         if (Math.abs(accumulatedDx) > MIN_MOVEMENT_THRESHOLD) {
-          onDrag(accumulatedDx, dampedDy, currentRelativeX, currentRelativeY)
+          console.log('🎮 DRAG MOVE:', {
+            accumulatedDx,
+            dampedDy,
+            currentRelativeX,
+            adjustedRelativeX,
+            rawDx,
+            dampedDx,
+            elementPositionDelta
+          })
+          // Use the adjusted relative position for more consistent behavior
+          onDrag(accumulatedDx, dampedDy, adjustedRelativeX, adjustedRelativeY)
           accumulatedDx = 0
         }
 
@@ -140,10 +162,22 @@ export function makeDraggable(
       if (isDragging) {
         const currentRect = element.getBoundingClientRect()
         const { left, top } = currentRect
-        const finalX = event.clientX - left
-        const finalY = event.clientY - top
+        
+        // Use the same adjustment logic as in onPointerMove
+        const elementPositionDelta = left - initialElementLeft
+        const adjustedFinalX = (event.clientX - initialElementLeft) - elementPositionDelta
+        const adjustedFinalY = (event.clientY - initialElementTop) - elementPositionDelta
 
-        onEnd?.(finalX, finalY)
+        console.log('🎯 DRAG END:', {
+          clientX: event.clientX,
+          elementLeft: left,
+          initialElementLeft,
+          elementPositionDelta,
+          adjustedFinalX,
+          adjustedFinalY
+        })
+
+        onEnd?.(adjustedFinalX, adjustedFinalY)
       }
       unsubscribeDocument()
     }

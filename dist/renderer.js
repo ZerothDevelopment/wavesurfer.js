@@ -114,21 +114,40 @@ class Renderer extends EventEmitter {
         this.subscriptions.push(makeDraggable(this.wrapper, 
         // On drag
         (_, __, x) => {
-            const relative = Math.max(0, Math.min(1, x / this.wrapper.getBoundingClientRect().width));
+            const wrapperWidth = this.wrapper.getBoundingClientRect().width;
+            const relative = Math.max(0, Math.min(1, x / wrapperWidth));
             this.dragRelativeX = relative;
+            console.log('🎯 RENDERER DRAG:', {
+                x,
+                wrapperWidth,
+                relative,
+                scrollLeft: this.scrollContainer.scrollLeft
+            });
             this.emit('drag', relative);
         }, 
         // On start drag
         (x) => {
             this.isDragging = true;
-            this.dragRelativeX = Math.max(0, Math.min(1, x / this.wrapper.getBoundingClientRect().width));
+            const wrapperWidth = this.wrapper.getBoundingClientRect().width;
+            this.dragRelativeX = Math.max(0, Math.min(1, x / wrapperWidth));
+            console.log('🎯 RENDERER DRAG START:', {
+                x,
+                wrapperWidth,
+                dragRelativeX: this.dragRelativeX
+            });
             this.emit('dragstart', this.dragRelativeX);
         }, 
         // On end drag
         (x) => {
             this.isDragging = false;
-            const relative = Math.max(0, Math.min(1, x / this.wrapper.getBoundingClientRect().width));
+            const wrapperWidth = this.wrapper.getBoundingClientRect().width;
+            const relative = Math.max(0, Math.min(1, x / wrapperWidth));
             this.dragRelativeX = null;
+            console.log('🎯 RENDERER DRAG END:', {
+                x,
+                wrapperWidth,
+                relative
+            });
             this.emit('dragend', relative);
         }));
     }
@@ -617,7 +636,18 @@ class Renderer extends EventEmitter {
             if (progressWidth < startEdge || progressWidth > endEdge) {
                 const maxScrollLeft = scrollWidth - clientWidth;
                 const idealScrollLeft = Math.max(0, Math.min(maxScrollLeft, progressWidth - middle));
+                const prevScrollLeft = this.scrollContainer.scrollLeft;
                 this.scrollContainer.scrollLeft = idealScrollLeft;
+                console.log('🔄 RENDERER AUTO-SCROLL:', {
+                    progress,
+                    progressWidth,
+                    startEdge,
+                    endEdge,
+                    prevScrollLeft,
+                    newScrollLeft: idealScrollLeft,
+                    scrollDelta: idealScrollLeft - prevScrollLeft,
+                    dragRelativeX: this.dragRelativeX
+                });
             }
         }
         else {
