@@ -39,6 +39,7 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     private continuousScrollDirection;
     private lastDragMouseX;
     private lastCursorProgress;
+    private currentPlaybackProgress;
     private wrapperRect;
     private lastLenisHash;
     private domSubscriptions;

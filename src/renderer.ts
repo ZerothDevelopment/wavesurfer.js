@@ -48,6 +48,9 @@ class Renderer extends EventEmitter<RendererEvents> {
 
   // Cache last cursor progress to skip redundant DOM writes
   private lastCursorProgress: number = -1
+  
+  // Track the current playback progress to avoid conflicts during scroll
+  private currentPlaybackProgress: number = 0
 
   // Cache wrapper rect during a drag session
   private wrapperRect: DOMRect | null = null
@@ -423,10 +426,8 @@ class Renderer extends EventEmitter<RendererEvents> {
       const endX = (animatedScrollLeft + clientWidth) / scrollWidth
       this.emit('scroll', startX, endX, animatedScrollLeft, animatedScrollLeft + clientWidth)
       
-      // Only sync cursor during dragging to avoid conflicts with playback cursor updates
-      if (this.isDragging) {
-        this.syncCursorWithScroll()
-      }
+      // Always call syncCursorWithScroll, but let it decide what to do based on current state
+      this.syncCursorWithScroll()
     })
   }
 
@@ -471,10 +472,13 @@ class Renderer extends EventEmitter<RendererEvents> {
   }
 
   private syncCursorWithScroll() {
-    // Only sync cursor with scroll during dragging operations
-    // During normal playback, cursor position is controlled by renderProgress()
+    // During dragging, use realTimeProgress for immediate cursor updates
     if (this.isDragging && this.realTimeProgress !== null) {
       this.updateCursorPosition(this.realTimeProgress)
+    } else if (!this.isDragging && this.currentPlaybackProgress !== null) {
+      // During normal playback, ensure cursor stays positioned correctly relative to scroll
+      // This prevents the cursor from lagging during auto-scroll
+      this.updateCursorPosition(this.currentPlaybackProgress)
     }
   }
 
@@ -1113,6 +1117,10 @@ class Renderer extends EventEmitter<RendererEvents> {
 
   renderProgress(progress: number, isPlaying?: boolean) {
     if (isNaN(progress)) return
+    
+    // Store the current playback progress for scroll sync
+    this.currentPlaybackProgress = progress
+    
     const percents = progress * 100
     this.canvasWrapper.style.clipPath = `polygon(${percents}% 0%, 100% 0%, 100% 100%, ${percents}% 100%)`
     this.progressWrapper.style.width = `${percents}%`

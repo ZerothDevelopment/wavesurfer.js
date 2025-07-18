@@ -45,6 +45,8 @@ class Renderer extends EventEmitter {
         this.lastDragMouseX = null;
         // Cache last cursor progress to skip redundant DOM writes
         this.lastCursorProgress = -1;
+        // Track the current playback progress to avoid conflicts during scroll
+        this.currentPlaybackProgress = 0;
         // Cache wrapper rect during a drag session
         this.wrapperRect = null;
         // Store last Lenis options hash to avoid unnecessary re-init
@@ -361,10 +363,8 @@ class Renderer extends EventEmitter {
             const startX = animatedScrollLeft / scrollWidth;
             const endX = (animatedScrollLeft + clientWidth) / scrollWidth;
             this.emit('scroll', startX, endX, animatedScrollLeft, animatedScrollLeft + clientWidth);
-            // Only sync cursor during dragging to avoid conflicts with playback cursor updates
-            if (this.isDragging) {
-                this.syncCursorWithScroll();
-            }
+            // Always call syncCursorWithScroll, but let it decide what to do based on current state
+            this.syncCursorWithScroll();
         });
     }
     startRealTimeCursorUpdates() {
@@ -405,10 +405,14 @@ class Renderer extends EventEmitter {
         this.cursor.style.transform = `translateX(-${Math.round(percents) === 100 ? this.options.cursorWidth : 0}px)`;
     }
     syncCursorWithScroll() {
-        // Only sync cursor with scroll during dragging operations
-        // During normal playback, cursor position is controlled by renderProgress()
+        // During dragging, use realTimeProgress for immediate cursor updates
         if (this.isDragging && this.realTimeProgress !== null) {
             this.updateCursorPosition(this.realTimeProgress);
+        }
+        else if (!this.isDragging && this.currentPlaybackProgress !== null) {
+            // During normal playback, ensure cursor stays positioned correctly relative to scroll
+            // This prevents the cursor from lagging during auto-scroll
+            this.updateCursorPosition(this.currentPlaybackProgress);
         }
     }
     startUserInteraction() {
@@ -931,6 +935,8 @@ class Renderer extends EventEmitter {
     renderProgress(progress, isPlaying) {
         if (isNaN(progress))
             return;
+        // Store the current playback progress for scroll sync
+        this.currentPlaybackProgress = progress;
         const percents = progress * 100;
         this.canvasWrapper.style.clipPath = `polygon(${percents}% 0%, 100% 0%, 100% 100%, ${percents}% 100%)`;
         this.progressWrapper.style.width = `${percents}%`;
