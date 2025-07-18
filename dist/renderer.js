@@ -260,6 +260,7 @@ class Renderer extends EventEmitter {
           width: 0;
           height: 100%;
           overflow: hidden;
+          will-change: width;
         }
         :host .progress > div {
           position: relative;
@@ -924,7 +925,7 @@ class Renderer extends EventEmitter {
         if (isNaN(progress))
             return;
         const percents = progress * 100;
-        this.canvasWrapper.style.clipPath = `polygon(${percents}% 0%, 100% 0%, 100% 100%, ${percents}% 100%)`;
+        // Removed expensive clipPath update; growing progress wrapper width is enough
         this.progressWrapper.style.width = `${percents}%`;
         if (!this.isDragging) {
             this.updateCursorPosition(progress);
