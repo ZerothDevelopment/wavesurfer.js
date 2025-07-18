@@ -47,6 +47,8 @@ class Renderer extends EventEmitter {
         this.lastCursorProgress = -1;
         // Track the current playback progress to avoid conflicts during scroll
         this.currentPlaybackProgress = 0;
+        // Flag to prevent cursor sync during auto-scroll animations
+        this.isAutoScrolling = false;
         // Cache wrapper rect during a drag session
         this.wrapperRect = null;
         // Store last Lenis options hash to avoid unnecessary re-init
@@ -409,14 +411,16 @@ class Renderer extends EventEmitter {
         if (this.isDragging && this.realTimeProgress !== null) {
             this.updateCursorPosition(this.realTimeProgress);
         }
-        else if (!this.isDragging && this.currentPlaybackProgress !== null) {
-            // During normal playback, ensure cursor stays positioned correctly relative to scroll
-            // This prevents the cursor from lagging during auto-scroll
+        else if (!this.isDragging && !this.isAutoScrolling && this.currentPlaybackProgress !== null) {
+            // Only sync cursor during manual scroll, not during auto-scroll animations
+            // This prevents wobbling during playback with auto-scroll
             this.updateCursorPosition(this.currentPlaybackProgress);
         }
     }
     startUserInteraction() {
         this.isUserInteracting = true;
+        // Clear auto-scroll flag when user starts interacting
+        this.isAutoScrolling = false;
         if (this.interactionTimeout) {
             clearTimeout(this.interactionTimeout);
         }
@@ -907,8 +911,12 @@ class Renderer extends EventEmitter {
             }
         }
         else {
+            let needsScroll = false;
             if (progressWidth < startEdge || progressWidth > endEdge) {
+                needsScroll = true;
                 const targetScrollLeft = progressWidth - (this.options.autoCenter ? middle : 0);
+                // Set auto-scroll flag to prevent cursor wobbling
+                this.isAutoScrolling = true;
                 if (this.lenis) {
                     this.lenis.scrollTo(targetScrollLeft, {
                         lerp: 0.06,
@@ -922,13 +930,22 @@ class Renderer extends EventEmitter {
             }
             const center = progressWidth - animatedScrollLeft - middle;
             if (isPlaying && this.options.autoCenter && center > 0) {
+                needsScroll = true;
                 const newScrollLeft = animatedScrollLeft + Math.min(center, 10);
+                // Set auto-scroll flag to prevent cursor wobbling
+                this.isAutoScrolling = true;
                 if (this.lenis) {
                     this.lenis.scrollTo(newScrollLeft, { immediate: true });
                 }
                 else {
                     this.scrollContainer.scrollLeft = newScrollLeft;
                 }
+            }
+            // Clear auto-scroll flag after a short delay to allow scroll animation to complete
+            if (needsScroll) {
+                setTimeout(() => {
+                    this.isAutoScrolling = false;
+                }, 100);
             }
         }
     }
