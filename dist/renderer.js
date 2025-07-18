@@ -35,7 +35,7 @@ class Renderer extends EventEmitter {
         this.unsubscribeOnScroll = [];
         this.lenis = null;
         this.isDragging = false;
-        this.realTimeProgress = 0;
+        this.realTimeProgress = null;
         this.animationFrameId = null;
         this.isUserInteracting = false;
         this.interactionTimeout = null;
@@ -45,10 +45,6 @@ class Renderer extends EventEmitter {
         this.lastDragMouseX = null;
         // Cache last cursor progress to skip redundant DOM writes
         this.lastCursorProgress = -1;
-        // Track the current playback progress to avoid conflicts during scroll
-        this.currentPlaybackProgress = 0;
-        // Flag to prevent cursor sync during auto-scroll animations
-        this.isAutoScrolling = false;
         // Cache wrapper rect during a drag session
         this.wrapperRect = null;
         // Store last Lenis options hash to avoid unnecessary re-init
@@ -186,7 +182,7 @@ class Renderer extends EventEmitter {
             const wrapperWidth = (_b = (_a = this.wrapperRect) === null || _a === void 0 ? void 0 : _a.width) !== null && _b !== void 0 ? _b : this.wrapper.getBoundingClientRect().width;
             const relative = Math.max(0, Math.min(1, x / wrapperWidth));
             this.dragRelativeX = null;
-            this.realTimeProgress = 0;
+            this.realTimeProgress = null;
             this.wrapperRect = null;
             this.lastDragMouseX = null;
             this.endUserInteraction(); // Re-enable smooth scrolling after drag
@@ -365,7 +361,6 @@ class Renderer extends EventEmitter {
             const startX = animatedScrollLeft / scrollWidth;
             const endX = (animatedScrollLeft + clientWidth) / scrollWidth;
             this.emit('scroll', startX, endX, animatedScrollLeft, animatedScrollLeft + clientWidth);
-            // Always call syncCursorWithScroll, but let it decide what to do based on current state
             this.syncCursorWithScroll();
         });
     }
@@ -396,10 +391,7 @@ class Renderer extends EventEmitter {
     updateCursorPosition(progress) {
         if (isNaN(progress))
             return;
-        // Use more precise comparison to avoid floating-point precision issues
-        const roundedProgress = Math.round(progress * 10000) / 10000;
-        const lastRoundedProgress = Math.round(this.lastCursorProgress * 10000) / 10000;
-        if (roundedProgress === lastRoundedProgress)
+        if (progress === this.lastCursorProgress)
             return;
         this.lastCursorProgress = progress;
         const percents = progress * 100;
@@ -407,20 +399,12 @@ class Renderer extends EventEmitter {
         this.cursor.style.transform = `translateX(-${Math.round(percents) === 100 ? this.options.cursorWidth : 0}px)`;
     }
     syncCursorWithScroll() {
-        // During dragging, use realTimeProgress for immediate cursor updates
-        if (this.isDragging && this.realTimeProgress !== null) {
+        if (!this.isDragging && this.realTimeProgress !== null) {
             this.updateCursorPosition(this.realTimeProgress);
-        }
-        else if (!this.isDragging && !this.isAutoScrolling && this.currentPlaybackProgress !== null) {
-            // Only sync cursor during manual scroll, not during auto-scroll animations
-            // This prevents wobbling during playback with auto-scroll
-            this.updateCursorPosition(this.currentPlaybackProgress);
         }
     }
     startUserInteraction() {
         this.isUserInteracting = true;
-        // Clear auto-scroll flag when user starts interacting
-        this.isAutoScrolling = false;
         if (this.interactionTimeout) {
             clearTimeout(this.interactionTimeout);
         }
@@ -911,12 +895,8 @@ class Renderer extends EventEmitter {
             }
         }
         else {
-            let needsScroll = false;
             if (progressWidth < startEdge || progressWidth > endEdge) {
-                needsScroll = true;
                 const targetScrollLeft = progressWidth - (this.options.autoCenter ? middle : 0);
-                // Set auto-scroll flag to prevent cursor wobbling
-                this.isAutoScrolling = true;
                 if (this.lenis) {
                     this.lenis.scrollTo(targetScrollLeft, {
                         lerp: 0.06,
@@ -930,10 +910,7 @@ class Renderer extends EventEmitter {
             }
             const center = progressWidth - animatedScrollLeft - middle;
             if (isPlaying && this.options.autoCenter && center > 0) {
-                needsScroll = true;
                 const newScrollLeft = animatedScrollLeft + Math.min(center, 10);
-                // Set auto-scroll flag to prevent cursor wobbling
-                this.isAutoScrolling = true;
                 if (this.lenis) {
                     this.lenis.scrollTo(newScrollLeft, { immediate: true });
                 }
@@ -941,19 +918,11 @@ class Renderer extends EventEmitter {
                     this.scrollContainer.scrollLeft = newScrollLeft;
                 }
             }
-            // Clear auto-scroll flag after a short delay to allow scroll animation to complete
-            if (needsScroll) {
-                setTimeout(() => {
-                    this.isAutoScrolling = false;
-                }, 100);
-            }
         }
     }
     renderProgress(progress, isPlaying) {
         if (isNaN(progress))
             return;
-        // Store the current playback progress for scroll sync
-        this.currentPlaybackProgress = progress;
         const percents = progress * 100;
         this.canvasWrapper.style.clipPath = `polygon(${percents}% 0%, 100% 0%, 100% 100%, ${percents}% 100%)`;
         this.progressWrapper.style.width = `${percents}%`;
