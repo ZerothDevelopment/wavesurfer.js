@@ -36,7 +36,7 @@ class Renderer extends EventEmitter<RendererEvents> {
   private unsubscribeOnScroll: (() => void)[] = []
   private lenis: any = null
   private isDragging = false
-  private realTimeProgress = 0
+  private realTimeProgress: number | null = null
   private animationFrameId: number | null = null
   private isUserInteracting = false
   private interactionTimeout: number | null = null
@@ -219,7 +219,7 @@ class Renderer extends EventEmitter<RendererEvents> {
           const wrapperWidth = this.wrapperRect?.width ?? this.wrapper.getBoundingClientRect().width
           const relative = Math.max(0, Math.min(1, x / wrapperWidth))
           this.dragRelativeX = null
-          this.realTimeProgress = 0
+          this.realTimeProgress = null
           this.wrapperRect = null
           this.lastDragMouseX = null
           this.endUserInteraction() // Re-enable smooth scrolling after drag
@@ -467,7 +467,9 @@ class Renderer extends EventEmitter<RendererEvents> {
   }
 
   private syncCursorWithScroll() {
-    if (!this.isDragging && this.realTimeProgress !== null) {
+    // Only update cursor position during drag operations, not during normal playback
+    // This prevents cursor jumping during auto-scroll when music is playing
+    if (this.isDragging && this.realTimeProgress !== null) {
       this.updateCursorPosition(this.realTimeProgress)
     }
   }
