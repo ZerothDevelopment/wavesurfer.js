@@ -48,12 +48,6 @@ class Renderer extends EventEmitter<RendererEvents> {
 
   // Cache last cursor progress to skip redundant DOM writes
   private lastCursorProgress: number = -1
-  
-  // Track the current playback progress to avoid conflicts during scroll
-  private currentPlaybackProgress: number = 0
-  
-  // Flag to prevent cursor sync during auto-scroll animations
-  private isAutoScrolling: boolean = false
 
   // Cache wrapper rect during a drag session
   private wrapperRect: DOMRect | null = null
@@ -429,7 +423,8 @@ class Renderer extends EventEmitter<RendererEvents> {
       const endX = (animatedScrollLeft + clientWidth) / scrollWidth
       this.emit('scroll', startX, endX, animatedScrollLeft, animatedScrollLeft + clientWidth)
       
-      // Always call syncCursorWithScroll, but let it decide what to do based on current state
+
+      
       this.syncCursorWithScroll()
     })
   }
@@ -464,10 +459,7 @@ class Renderer extends EventEmitter<RendererEvents> {
 
   private updateCursorPosition(progress: number) {
     if (isNaN(progress)) return
-    // Use more precise comparison to avoid floating-point precision issues
-    const roundedProgress = Math.round(progress * 10000) / 10000
-    const lastRoundedProgress = Math.round(this.lastCursorProgress * 10000) / 10000
-    if (roundedProgress === lastRoundedProgress) return
+    if (progress === this.lastCursorProgress) return
     this.lastCursorProgress = progress
     const percents = progress * 100
     this.cursor.style.left = `${percents}%`
@@ -475,21 +467,13 @@ class Renderer extends EventEmitter<RendererEvents> {
   }
 
   private syncCursorWithScroll() {
-    // During dragging, use realTimeProgress for immediate cursor updates
-    if (this.isDragging && this.realTimeProgress !== null) {
+    if (!this.isDragging && this.realTimeProgress !== null) {
       this.updateCursorPosition(this.realTimeProgress)
-    } else if (!this.isDragging && !this.isAutoScrolling && this.currentPlaybackProgress !== null) {
-      // Only sync cursor during manual scroll, not during auto-scroll animations
-      // This prevents wobbling during playback with auto-scroll
-      this.updateCursorPosition(this.currentPlaybackProgress)
     }
   }
 
   private startUserInteraction() {
     this.isUserInteracting = true
-    
-    // Clear auto-scroll flag when user starts interacting
-    this.isAutoScrolling = false
     
     if (this.interactionTimeout) {
       clearTimeout(this.interactionTimeout)
@@ -1095,14 +1079,8 @@ class Renderer extends EventEmitter<RendererEvents> {
         }
       }
     } else {
-      let needsScroll = false
-      
       if (progressWidth < startEdge || progressWidth > endEdge) {
-        needsScroll = true
         const targetScrollLeft = progressWidth - (this.options.autoCenter ? middle : 0)
-        
-        // Set auto-scroll flag to prevent cursor wobbling
-        this.isAutoScrolling = true
         
         if (this.lenis) {
           this.lenis.scrollTo(targetScrollLeft, {
@@ -1117,34 +1095,18 @@ class Renderer extends EventEmitter<RendererEvents> {
 
       const center = progressWidth - animatedScrollLeft - middle
       if (isPlaying && this.options.autoCenter && center > 0) {
-        needsScroll = true
         const newScrollLeft = animatedScrollLeft + Math.min(center, 10)
-        
-        // Set auto-scroll flag to prevent cursor wobbling
-        this.isAutoScrolling = true
-        
         if (this.lenis) {
           this.lenis.scrollTo(newScrollLeft, { immediate: true })
         } else {
           this.scrollContainer.scrollLeft = newScrollLeft
         }
       }
-      
-      // Clear auto-scroll flag after a short delay to allow scroll animation to complete
-      if (needsScroll) {
-        setTimeout(() => {
-          this.isAutoScrolling = false
-        }, 100)
-      }
     }
   }
 
   renderProgress(progress: number, isPlaying?: boolean) {
     if (isNaN(progress)) return
-    
-    // Store the current playback progress for scroll sync
-    this.currentPlaybackProgress = progress
-    
     const percents = progress * 100
     this.canvasWrapper.style.clipPath = `polygon(${percents}% 0%, 100% 0%, 100% 100%, ${percents}% 100%)`
     this.progressWrapper.style.width = `${percents}%`
