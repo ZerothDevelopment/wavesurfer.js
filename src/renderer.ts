@@ -36,7 +36,7 @@ class Renderer extends EventEmitter<RendererEvents> {
   private unsubscribeOnScroll: (() => void)[] = []
   private lenis: any = null
   private isDragging = false
-  private realTimeProgress: number | null = null
+  private realTimeProgress = 0
   private animationFrameId: number | null = null
   private isUserInteracting = false
   private interactionTimeout: number | null = null
@@ -219,7 +219,7 @@ class Renderer extends EventEmitter<RendererEvents> {
           const wrapperWidth = this.wrapperRect?.width ?? this.wrapper.getBoundingClientRect().width
           const relative = Math.max(0, Math.min(1, x / wrapperWidth))
           this.dragRelativeX = null
-          this.realTimeProgress = null
+          this.realTimeProgress = 0
           this.wrapperRect = null
           this.lastDragMouseX = null
           this.endUserInteraction() // Re-enable smooth scrolling after drag
@@ -303,7 +303,6 @@ class Renderer extends EventEmitter<RendererEvents> {
           width: 0;
           height: 100%;
           overflow: hidden;
-          will-change: width;
         }
         :host .progress > div {
           position: relative;
@@ -1109,7 +1108,7 @@ class Renderer extends EventEmitter<RendererEvents> {
   renderProgress(progress: number, isPlaying?: boolean) {
     if (isNaN(progress)) return
     const percents = progress * 100
-    // Removed expensive clipPath update; growing progress wrapper width is enough
+    this.canvasWrapper.style.clipPath = `polygon(${percents}% 0%, 100% 0%, 100% 100%, ${percents}% 100%)`
     this.progressWrapper.style.width = `${percents}%`
     
     if (!this.isDragging) {
