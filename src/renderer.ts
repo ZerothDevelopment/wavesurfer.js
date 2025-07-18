@@ -423,9 +423,10 @@ class Renderer extends EventEmitter<RendererEvents> {
       const endX = (animatedScrollLeft + clientWidth) / scrollWidth
       this.emit('scroll', startX, endX, animatedScrollLeft, animatedScrollLeft + clientWidth)
       
-
-      
-      this.syncCursorWithScroll()
+      // Only sync cursor during dragging to avoid conflicts with playback cursor updates
+      if (this.isDragging) {
+        this.syncCursorWithScroll()
+      }
     })
   }
 
@@ -459,7 +460,10 @@ class Renderer extends EventEmitter<RendererEvents> {
 
   private updateCursorPosition(progress: number) {
     if (isNaN(progress)) return
-    if (progress === this.lastCursorProgress) return
+    // Use more precise comparison to avoid floating-point precision issues
+    const roundedProgress = Math.round(progress * 10000) / 10000
+    const lastRoundedProgress = Math.round(this.lastCursorProgress * 10000) / 10000
+    if (roundedProgress === lastRoundedProgress) return
     this.lastCursorProgress = progress
     const percents = progress * 100
     this.cursor.style.left = `${percents}%`
@@ -467,7 +471,9 @@ class Renderer extends EventEmitter<RendererEvents> {
   }
 
   private syncCursorWithScroll() {
-    if (!this.isDragging && this.realTimeProgress !== null) {
+    // Only sync cursor with scroll during dragging operations
+    // During normal playback, cursor position is controlled by renderProgress()
+    if (this.isDragging && this.realTimeProgress !== null) {
       this.updateCursorPosition(this.realTimeProgress)
     }
   }
